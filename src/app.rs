@@ -11,7 +11,7 @@ use std::io::{stdout, Stdout};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::slots::{FocusTarget, PaneLayout};
+use crate::slots::{FocusTarget, PaneLayout, ReaderState, SlotContent};
 use crate::theme::Theme;
 use crate::ui;
 
@@ -61,6 +61,38 @@ impl App {
 		if matches!(key, KeyCode::Char('q')) {
 			self.should_quit = true;
 			return;
+		}
+
+		match key {
+			KeyCode::Tab => {
+				self.focus = self.pane_layout.cycle_focus_forward(self.focus);
+				return;
+			}
+			KeyCode::BackTab => {
+				self.focus = self.pane_layout.cycle_focus_backward(self.focus);
+				return;
+			}
+			KeyCode::Char('+') => {
+				self.focus = self.pane_layout.open_slot_after(self.focus);
+				return;
+			}
+			KeyCode::Char('-') => {
+				self.focus = self.pane_layout.close_slot(self.focus);
+				return;
+			}
+			KeyCode::Char('r') => {
+				let focus = self.focus;
+				let is_empty = matches!(
+					self.pane_layout.focused_slot(focus),
+					Some(SlotContent::Empty)
+				);
+				if is_empty {
+					self.pane_layout
+						.set_focused_content(focus, SlotContent::Reader(ReaderState::new()));
+				}
+				return;
+			}
+			_ => {}
 		}
 
 		let focus = self.focus;

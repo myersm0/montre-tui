@@ -62,4 +62,69 @@ impl PaneLayout {
 			FocusTarget::BottomSlot => self.bottom_slot.as_ref(),
 		}
 	}
+
+	pub fn open_slot_after(&mut self, focus: FocusTarget) -> FocusTarget {
+		if self.top_slots.len() >= 3 {
+			return focus;
+		}
+		let insert_at = match focus {
+			FocusTarget::TopSlot(index) => index + 1,
+			FocusTarget::BottomSlot => self.top_slots.len(),
+		};
+		self.top_slots.insert(insert_at, SlotContent::Empty);
+		FocusTarget::TopSlot(insert_at)
+	}
+
+	pub fn close_slot(&mut self, focus: FocusTarget) -> FocusTarget {
+		match focus {
+			FocusTarget::TopSlot(index) => {
+				if self.top_slots.len() <= 1 {
+					return focus;
+				}
+				self.top_slots.remove(index);
+				let next_index = index.saturating_sub(1).min(self.top_slots.len() - 1);
+				FocusTarget::TopSlot(next_index)
+			}
+			FocusTarget::BottomSlot => focus,
+		}
+	}
+
+	pub fn cycle_focus_forward(&self, focus: FocusTarget) -> FocusTarget {
+		match focus {
+			FocusTarget::TopSlot(index) => {
+				let next = (index + 1) % self.top_slots.len();
+				FocusTarget::TopSlot(next)
+			}
+			FocusTarget::BottomSlot => FocusTarget::TopSlot(0),
+		}
+	}
+
+	pub fn cycle_focus_backward(&self, focus: FocusTarget) -> FocusTarget {
+		match focus {
+			FocusTarget::TopSlot(index) => {
+				let previous = if index == 0 {
+					self.top_slots.len() - 1
+				} else {
+					index - 1
+				};
+				FocusTarget::TopSlot(previous)
+			}
+			FocusTarget::BottomSlot => FocusTarget::TopSlot(self.top_slots.len() - 1),
+		}
+	}
+
+	pub fn set_focused_content(&mut self, focus: FocusTarget, content: SlotContent) {
+		match focus {
+			FocusTarget::TopSlot(index) => {
+				if let Some(slot) = self.top_slots.get_mut(index) {
+					*slot = content;
+				}
+			}
+			FocusTarget::BottomSlot => {
+				if let Some(slot) = self.bottom_slot.as_mut() {
+					*slot = content;
+				}
+			}
+		}
+	}
 }

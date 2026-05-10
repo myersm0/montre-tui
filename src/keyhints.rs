@@ -17,12 +17,17 @@ impl KeyHint {
 }
 
 pub fn global_hints() -> Vec<KeyHint> {
-	vec![KeyHint::new("q", "quit", 0)]
+	vec![
+		KeyHint::new("Tab", "focus", 2),
+		KeyHint::new("+/-", "open/close slot", 1),
+		KeyHint::new("q", "quit", 0),
+	]
 }
 
 pub fn hints_for_focused_slot(content: Option<&SlotContent>) -> Vec<KeyHint> {
 	match content {
 		Some(SlotContent::Reader(_)) => reader_hints(),
+		Some(SlotContent::Empty) => empty_slot_hints(),
 		_ => Vec::new(),
 	}
 }
@@ -35,4 +40,8 @@ fn reader_hints() -> Vec<KeyHint> {
 		KeyHint::new("[/]", "component", 70),
 		KeyHint::new("Home/End", "doc bounds", 60),
 	]
+}
+
+fn empty_slot_hints() -> Vec<KeyHint> {
+	vec![KeyHint::new("r", "reader", 100)]
 }
