@@ -15,6 +15,8 @@ use crate::slots::{FocusTarget, PaneLayout};
 use crate::theme::Theme;
 use crate::ui;
 
+const PAGE_STEP: usize = 10;
+
 pub struct App {
 	pub corpus: Arc<Corpus>,
 	pub corpus_path: PathBuf,
@@ -56,9 +58,27 @@ impl App {
 	}
 
 	fn handle_key(&mut self, key: KeyCode) {
-		match key {
-			KeyCode::Char('q') => self.should_quit = true,
-			_ => {}
+		if matches!(key, KeyCode::Char('q')) {
+			self.should_quit = true;
+			return;
+		}
+
+		let focus = self.focus;
+		if let Some(state) = self.pane_layout.focused_reader_mut(focus) {
+			let corpus: &Corpus = &self.corpus;
+			match key {
+				KeyCode::Up => state.cursor.retreat_sentence(corpus),
+				KeyCode::Down => state.cursor.advance_sentence(corpus),
+				KeyCode::PageUp => state.cursor.retreat_screen(corpus, PAGE_STEP),
+				KeyCode::PageDown => state.cursor.advance_screen(corpus, PAGE_STEP),
+				KeyCode::Home => state.cursor.to_document_start(corpus),
+				KeyCode::End => state.cursor.to_document_end(corpus),
+				KeyCode::Char('J') => state.cursor.advance_document(corpus),
+				KeyCode::Char('K') => state.cursor.retreat_document(corpus),
+				KeyCode::Char(']') => state.cursor.advance_component(corpus),
+				KeyCode::Char('[') => state.cursor.retreat_component(corpus),
+				_ => {}
+			}
 		}
 	}
 }

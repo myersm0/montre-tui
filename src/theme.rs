@@ -5,6 +5,9 @@ pub struct Theme {
 	pub pane_border_active: BorderStyle,
 	pub pane_border_inactive: BorderStyle,
 	pub pane_title: Style,
+	pub text_default: Style,
+	pub cursor_sentence: Style,
+	pub cursor_marker: Style,
 	pub status_bar: Style,
 	pub query_prompt: Style,
 	pub query_input: Style,
@@ -27,6 +30,7 @@ impl Theme {
 		let foreground = Color::Rgb(192, 202, 245);
 		let key_color = Color::Rgb(187, 154, 247);
 		let error_color = Color::Rgb(247, 118, 142);
+		let cursor_bg = Color::Rgb(40, 50, 78);
 
 		Self {
 			pane_border_active: BorderStyle {
@@ -38,6 +42,12 @@ impl Theme {
 				border_type: BorderType::Plain,
 			},
 			pane_title: Style::default().fg(foreground).add_modifier(Modifier::BOLD),
+			text_default: Style::default(),
+			cursor_sentence: Style::default().bg(cursor_bg),
+			cursor_marker: Style::default()
+				.fg(accent)
+				.bg(cursor_bg)
+				.add_modifier(Modifier::BOLD),
 			status_bar: Style::default().fg(dim),
 			query_prompt: Style::default().fg(accent).add_modifier(Modifier::BOLD),
 			query_input: Style::default().fg(foreground),

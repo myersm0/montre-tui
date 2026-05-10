@@ -5,10 +5,12 @@ use ratatui::Frame;
 use crate::app::App;
 use crate::slots::{FocusTarget, SlotContent};
 use crate::theme::Theme;
+use montre_index::Corpus;
 
 mod hints_bar;
 mod info_bar;
 mod query_bar;
+mod reader_pane;
 
 pub fn draw(frame: &mut Frame, app: &App) {
 	let regions = Layout::default()
@@ -39,24 +41,40 @@ fn draw_top_slots(frame: &mut Frame, area: Rect, app: &App) {
 
 	for (slot_index, slot) in app.pane_layout.top_slots.iter().enumerate() {
 		let is_focused = matches!(app.focus, FocusTarget::TopSlot(active) if active == slot_index);
-		draw_slot(frame, slot_areas[slot_index], slot, is_focused, &app.theme);
+		draw_slot(
+			frame,
+			slot_areas[slot_index],
+			slot,
+			is_focused,
+			&app.corpus,
+			&app.theme,
+		);
 	}
 }
 
-fn draw_slot(frame: &mut Frame, area: Rect, slot: &SlotContent, is_focused: bool, theme: &Theme) {
-	let border = if is_focused {
-		&theme.pane_border_active
-	} else {
-		&theme.pane_border_inactive
-	};
-	let block = Block::default()
-		.borders(Borders::ALL)
-		.border_type(border.border_type)
-		.border_style(border.style);
-
+fn draw_slot(
+	frame: &mut Frame,
+	area: Rect,
+	slot: &SlotContent,
+	is_focused: bool,
+	corpus: &Corpus,
+	theme: &Theme,
+) {
 	match slot {
 		SlotContent::Empty => {
+			let border = if is_focused {
+				&theme.pane_border_active
+			} else {
+				&theme.pane_border_inactive
+			};
+			let block = Block::default()
+				.borders(Borders::ALL)
+				.border_type(border.border_type)
+				.border_style(border.style);
 			frame.render_widget(block, area);
+		}
+		SlotContent::Reader(state) => {
+			reader_pane::draw(frame, area, state, is_focused, corpus, theme);
 		}
 	}
 }
