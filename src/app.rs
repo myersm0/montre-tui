@@ -137,11 +137,36 @@ impl App {
 			return;
 		}
 
-		if let Some(state) = self.pane_layout.focused_kwic_mut(focus) {
+		let hit_target: Option<(u32, u32)> = if let Some(state) =
+			self.pane_layout.focused_kwic_mut(focus)
+		{
 			match key {
-				KeyCode::Up => state.select_previous(),
-				KeyCode::Down => state.select_next(),
-				_ => {}
+				KeyCode::Up => {
+					state.select_previous();
+					None
+				}
+				KeyCode::Down => {
+					state.select_next();
+					None
+				}
+				KeyCode::Enter => state
+					.results
+					.as_ref()
+					.and_then(|results| results.hits().get(state.selected))
+					.map(|hit| (hit.document_index, hit.sentence_index)),
+				_ => None,
+			}
+		} else {
+			None
+		};
+
+		if let Some((document, sentence)) = hit_target {
+			if let Some(target) = self.pane_layout.ensure_reader_slot() {
+				if let Some(reader) = self.pane_layout.focused_reader_mut(target) {
+					reader.cursor.document_index = document;
+					reader.cursor.sentence_index = sentence;
+				}
+				self.focus = target;
 			}
 		}
 	}

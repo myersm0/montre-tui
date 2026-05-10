@@ -36,25 +36,27 @@ pub fn draw(
 	let inner = block.inner(area);
 	frame.render_widget(block, area);
 
-	let sentences = reader::sentences_in_document(corpus, state.cursor.document_index);
-	let first_in_document = sentences
-		.first()
-		.map(|sentence| sentence.sentence_index)
-		.unwrap_or(0);
-	let cursor_offset = state
-		.cursor
-		.sentence_index
-		.saturating_sub(first_in_document) as usize;
+	let Some((first_in_document, end_in_document)) =
+		reader::document_sentence_range(corpus, state.cursor.document_index)
+	else {
+		return;
+	};
+
+	let cursor = state.cursor.sentence_index;
+	let cursor_offset = cursor.saturating_sub(first_in_document) as usize;
 
 	let inner_height = inner.height as usize;
 	let top_margin = (inner_height / 4).max(2);
 	let scroll = cursor_offset.saturating_sub(top_margin);
 
+	let visible_start = first_in_document + scroll as u32;
+	let visible_end = (visible_start + inner_height as u32).min(end_in_document);
+	let sentences = reader::sentences_in_range(corpus, visible_start, visible_end);
+
 	let lines: Vec<Line> = sentences
 		.iter()
-		.skip(scroll)
 		.map(|sentence| {
-			let is_cursor = sentence.sentence_index == state.cursor.sentence_index;
+			let is_cursor = sentence.sentence_index == cursor;
 			let (marker, body_style) = if is_cursor {
 				(
 					Span::styled("▌ ", theme.cursor_marker),

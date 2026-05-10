@@ -62,7 +62,10 @@ fn empty_slot_hints() -> Vec<KeyHint> {
 }
 
 fn kwic_hints() -> Vec<KeyHint> {
-	vec![KeyHint::new("↑↓", "select", 100)]
+	vec![
+		KeyHint::new("↑↓", "select", 100),
+		KeyHint::new("Enter", "jump to hit", 90),
+	]
 }
 
 fn query_entry_hints() -> Vec<KeyHint> {

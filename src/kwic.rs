@@ -10,9 +10,19 @@ pub struct KwicLine {
 	pub hit_position: u64,
 }
 
-pub fn format_kwic(corpus: &Corpus, results: &Results, window_tokens: usize) -> Vec<KwicLine> {
-	results
-		.hits()
+pub fn format_kwic_range(
+	corpus: &Corpus,
+	results: &Results,
+	window_tokens: usize,
+	start: usize,
+	end: usize,
+) -> Vec<KwicLine> {
+	let hits = results.hits();
+	let end = end.min(hits.len());
+	if start >= end {
+		return Vec::new();
+	}
+	hits[start..end]
 		.iter()
 		.map(|hit| {
 			let sentence = corpus.spans().containing("sentence", hit.span.start);

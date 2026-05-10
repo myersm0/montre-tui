@@ -53,24 +53,26 @@ pub fn draw(
 		return;
 	};
 
-	if results.hits().is_empty() {
+	let total_hits = results.hits().len();
+	if total_hits == 0 {
 		let placeholder = Line::from(Span::styled("No matches.", theme.hints_bar));
 		frame.render_widget(placeholder, inner);
 		return;
 	}
 
-	let lines = kwic::format_kwic(corpus, results, state.window_tokens);
 	let inner_height = inner.height as usize;
 	let top_margin = 2;
 	let scroll = state.selected.saturating_sub(top_margin);
+	let visible_end = (scroll + inner_height).min(total_hits);
+
+	let lines = kwic::format_kwic_range(corpus, results, state.window_tokens, scroll, visible_end);
 
 	let visible: Vec<Line> = lines
 		.iter()
 		.enumerate()
-		.skip(scroll)
-		.take(inner_height)
-		.map(|(index, line)| {
-			let is_selected = index == state.selected;
+		.map(|(local_index, line)| {
+			let global_index = scroll + local_index;
+			let is_selected = global_index == state.selected;
 			let row_style = if is_selected {
 				theme.kwic_selected
 			} else {

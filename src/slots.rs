@@ -124,6 +124,26 @@ impl PaneLayout {
 		self.first_kwic_mut().expect("ensured")
 	}
 
+	pub fn ensure_reader_slot(&mut self) -> Option<FocusTarget> {
+		if let Some(index) = self
+			.top_slots
+			.iter()
+			.position(|slot| matches!(slot, SlotContent::Reader(_)))
+		{
+			return Some(FocusTarget::TopSlot(index));
+		}
+		if matches!(self.bottom_slot, Some(SlotContent::Reader(_))) {
+			return Some(FocusTarget::BottomSlot);
+		}
+		if self.top_slots.len() < 3 {
+			self.top_slots
+				.push(SlotContent::Reader(ReaderState::new()));
+			Some(FocusTarget::TopSlot(self.top_slots.len() - 1))
+		} else {
+			None
+		}
+	}
+
 	pub fn first_kwic_mut(&mut self) -> Option<&mut KwicState> {
 		for slot in self.top_slots.iter_mut() {
 			if let SlotContent::Kwic(state) = slot {
