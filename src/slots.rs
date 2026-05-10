@@ -1,14 +1,25 @@
+use montre_query::executor::Results;
+
 use crate::cursor::Cursor;
 
 pub enum SlotContent {
 	Empty,
 	Reader(ReaderState),
+	Kwic(KwicState),
 }
 
 pub struct ReaderState {
 	pub cursor: Cursor,
 	pub scroll_offset: usize,
 	pub annotation_overlay: bool,
+}
+
+pub struct KwicState {
+	pub results: Option<Results>,
+	pub error: Option<String>,
+	pub selected: usize,
+	pub scroll_offset: usize,
+	pub window_tokens: usize,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -35,11 +46,36 @@ impl ReaderState {
 	}
 }
 
+impl KwicState {
+	pub fn new() -> Self {
+		Self {
+			results: None,
+			error: None,
+			selected: 0,
+			scroll_offset: 0,
+			window_tokens: 8,
+		}
+	}
+
+	pub fn select_next(&mut self) {
+		if let Some(results) = &self.results {
+			let length = results.hits().len();
+			if length > 0 && self.selected + 1 < length {
+				self.selected += 1;
+			}
+		}
+	}
+
+	pub fn select_previous(&mut self) {
+		self.selected = self.selected.saturating_sub(1);
+	}
+}
+
 impl PaneLayout {
 	pub fn new() -> Self {
 		Self {
 			top_slots: vec![SlotContent::Reader(ReaderState::new())],
-			bottom_slot: None,
+			bottom_slot: Some(SlotContent::Kwic(KwicState::new())),
 		}
 	}
 
@@ -56,11 +92,48 @@ impl PaneLayout {
 		}
 	}
 
+	pub fn focused_kwic_mut(&mut self, focus: FocusTarget) -> Option<&mut KwicState> {
+		match focus {
+			FocusTarget::TopSlot(index) => match self.top_slots.get_mut(index)? {
+				SlotContent::Kwic(state) => Some(state),
+				_ => None,
+			},
+			FocusTarget::BottomSlot => match self.bottom_slot.as_mut()? {
+				SlotContent::Kwic(state) => Some(state),
+				_ => None,
+			},
+		}
+	}
+
 	pub fn focused_slot(&self, focus: FocusTarget) -> Option<&SlotContent> {
 		match focus {
 			FocusTarget::TopSlot(index) => self.top_slots.get(index),
 			FocusTarget::BottomSlot => self.bottom_slot.as_ref(),
 		}
+	}
+
+	pub fn ensure_kwic_slot(&mut self) -> &mut KwicState {
+		let already_exists = self
+			.top_slots
+			.iter()
+			.any(|slot| matches!(slot, SlotContent::Kwic(_)))
+			|| matches!(self.bottom_slot, Some(SlotContent::Kwic(_)));
+		if !already_exists {
+			self.bottom_slot = Some(SlotContent::Kwic(KwicState::new()));
+		}
+		self.first_kwic_mut().expect("ensured")
+	}
+
+	pub fn first_kwic_mut(&mut self) -> Option<&mut KwicState> {
+		for slot in self.top_slots.iter_mut() {
+			if let SlotContent::Kwic(state) = slot {
+				return Some(state);
+			}
+		}
+		if let Some(SlotContent::Kwic(state)) = self.bottom_slot.as_mut() {
+			return Some(state);
+		}
+		None
 	}
 
 	pub fn open_slot_after(&mut self, focus: FocusTarget) -> FocusTarget {
@@ -92,8 +165,14 @@ impl PaneLayout {
 	pub fn cycle_focus_forward(&self, focus: FocusTarget) -> FocusTarget {
 		match focus {
 			FocusTarget::TopSlot(index) => {
-				let next = (index + 1) % self.top_slots.len();
-				FocusTarget::TopSlot(next)
+				let next = index + 1;
+				if next < self.top_slots.len() {
+					FocusTarget::TopSlot(next)
+				} else if self.bottom_slot.is_some() {
+					FocusTarget::BottomSlot
+				} else {
+					FocusTarget::TopSlot(0)
+				}
 			}
 			FocusTarget::BottomSlot => FocusTarget::TopSlot(0),
 		}
@@ -102,12 +181,13 @@ impl PaneLayout {
 	pub fn cycle_focus_backward(&self, focus: FocusTarget) -> FocusTarget {
 		match focus {
 			FocusTarget::TopSlot(index) => {
-				let previous = if index == 0 {
-					self.top_slots.len() - 1
+				if index > 0 {
+					FocusTarget::TopSlot(index - 1)
+				} else if self.bottom_slot.is_some() {
+					FocusTarget::BottomSlot
 				} else {
-					index - 1
-				};
-				FocusTarget::TopSlot(previous)
+					FocusTarget::TopSlot(self.top_slots.len() - 1)
+				}
 			}
 			FocusTarget::BottomSlot => FocusTarget::TopSlot(self.top_slots.len() - 1),
 		}

@@ -9,14 +9,24 @@ use montre_index::Corpus;
 
 mod hints_bar;
 mod info_bar;
+mod kwic_pane;
 mod query_bar;
 mod reader_pane;
 
+const BOTTOM_SLOT_HEIGHT: u16 = 12;
+
 pub fn draw(frame: &mut Frame, app: &App) {
+	let bottom_height = if app.pane_layout.bottom_slot.is_some() {
+		BOTTOM_SLOT_HEIGHT
+	} else {
+		0
+	};
+
 	let regions = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([
 			Constraint::Min(0),
+			Constraint::Length(bottom_height),
 			Constraint::Length(1),
 			Constraint::Length(1),
 			Constraint::Length(1),
@@ -24,9 +34,22 @@ pub fn draw(frame: &mut Frame, app: &App) {
 		.split(frame.area());
 
 	draw_top_slots(frame, regions[0], app);
-	query_bar::draw(frame, regions[1], app);
-	info_bar::draw(frame, regions[2], app);
-	hints_bar::draw(frame, regions[3], app);
+
+	if let Some(slot) = app.pane_layout.bottom_slot.as_ref() {
+		let is_focused = matches!(app.focus, FocusTarget::BottomSlot);
+		draw_slot(
+			frame,
+			regions[1],
+			slot,
+			is_focused,
+			&app.corpus,
+			&app.theme,
+		);
+	}
+
+	query_bar::draw(frame, regions[2], app);
+	info_bar::draw(frame, regions[3], app);
+	hints_bar::draw(frame, regions[4], app);
 }
 
 fn draw_top_slots(frame: &mut Frame, area: Rect, app: &App) {
@@ -75,6 +98,9 @@ fn draw_slot(
 		}
 		SlotContent::Reader(state) => {
 			reader_pane::draw(frame, area, state, is_focused, corpus, theme);
+		}
+		SlotContent::Kwic(state) => {
+			kwic_pane::draw(frame, area, state, is_focused, corpus, theme);
 		}
 	}
 }

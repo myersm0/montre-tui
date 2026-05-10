@@ -5,6 +5,8 @@ use std::path::PathBuf;
 mod app;
 mod cursor;
 mod keyhints;
+mod kwic;
+mod query;
 mod reader;
 mod slots;
 mod theme;

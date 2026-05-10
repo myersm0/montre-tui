@@ -7,9 +7,7 @@ use crate::keyhints;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 	let focused_slot = app.pane_layout.focused_slot(app.focus);
-	let mut hints = keyhints::hints_for_focused_slot(focused_slot);
-	hints.extend(keyhints::global_hints());
-	hints.sort_by(|a, b| b.priority.cmp(&a.priority));
+	let hints = keyhints::hints_for(app.mode, focused_slot);
 
 	let mut spans = vec![Span::raw(" ")];
 	for (hint_index, hint) in hints.iter().enumerate() {
