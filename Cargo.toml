@@ -1,15 +1,19 @@
-[package]
-name = "montre-tui"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+members = [
+	"crates/montre-tui-core",
+	"crates/montre-reader",
+]
+
+[workspace.package]
 edition = "2021"
 license = "Apache-2.0"
-description = "Terminal UI for the Montre corpus query engine"
 
-[dependencies]
-montre-core = { path = "../049300/crates/montre-core" }
-montre-index = { path = "../049300/crates/montre-index" }
-montre-query = { path = "../049300/crates/montre-query" }
+[workspace.dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
 anyhow = "1"
+thiserror = "2"
 clap = { version = "4", features = ["derive"] }
+montre-daemon = { path = "../049300/crates/montre-daemon" }
+montre-tui-core = { path = "crates/montre-tui-core" }
