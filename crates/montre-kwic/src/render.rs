@@ -3,6 +3,7 @@ use montre_tui_core::key_hint::{draw_hints_bar, KeyHint};
 use montre_tui_core::status_bar::{draw_status_bar, StatusBarContent};
 use montre_tui_core::theme::Theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -157,28 +158,57 @@ fn render_hit_row(row: &HitRow, access: &DaemonAccess, is_cursor: bool, theme: &
 		.document(row.document_index)
 		.map(|summary| summary.name.clone())
 		.unwrap_or_default();
-	let document_field = format!("{:<20}", truncate(&document_name, 20));
-	let sentence_field = format!(" sent {:>5} ", row.sentence_index);
+	let doc_col_width: usize = 18;
+	let context_col_width: usize = 30;
+	let doc_field = pad_or_truncate_right(&document_name, doc_col_width);
+	let sent_field = format!("sent {:>5}", row.sentence_index);
+	let left_field = pad_or_truncate_left(row.left_text.trim(), context_col_width);
+	let right_field = pad_or_truncate_right(row.right_text.trim(), context_col_width);
 	let row_style = if is_cursor {
 		theme.cursor_sentence
 	} else {
 		theme.text_default
 	};
 	Line::from(vec![
-		Span::styled(document_field, theme.hints_bar),
-		Span::styled(sentence_field, theme.hints_bar),
-		Span::styled(row.match_text.clone(), theme.text_default),
+		Span::styled(doc_field, theme.hints_bar),
+		Span::raw(" "),
+		Span::styled(sent_field, theme.hints_bar),
+		Span::raw("  "),
+		Span::styled(left_field, theme.hints_bar),
+		Span::raw(" "),
+		Span::styled(
+			row.match_text.clone(),
+			theme.text_default.add_modifier(Modifier::BOLD),
+		),
+		Span::raw(" "),
+		Span::styled(right_field, theme.hints_bar),
 	])
 	.style(row_style)
 }
 
-fn truncate(text: &str, width: usize) -> String {
-	if text.chars().count() <= width {
+fn pad_or_truncate_right(text: &str, width: usize) -> String {
+	let char_count = text.chars().count();
+	if char_count == width {
 		text.to_string()
+	} else if char_count < width {
+		format!("{}{}", text, " ".repeat(width - char_count))
 	} else {
 		let mut result: String = text.chars().take(width.saturating_sub(1)).collect();
 		result.push('…');
 		result
+	}
+}
+
+fn pad_or_truncate_left(text: &str, width: usize) -> String {
+	let char_count = text.chars().count();
+	if char_count == width {
+		text.to_string()
+	} else if char_count < width {
+		format!("{}{}", " ".repeat(width - char_count), text)
+	} else {
+		let skip = char_count - width.saturating_sub(1);
+		let kept: String = text.chars().skip(skip).collect();
+		format!("…{}", kept)
 	}
 }
 

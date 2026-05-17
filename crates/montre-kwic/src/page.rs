@@ -8,5 +8,7 @@ pub struct HitsPage {
 pub struct HitRow {
 	pub document_index: u32,
 	pub sentence_index: u32,
+	pub left_text: String,
 	pub match_text: String,
+	pub right_text: String,
 }

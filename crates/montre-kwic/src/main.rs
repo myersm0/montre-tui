@@ -326,14 +326,24 @@ fn run_query(app: &mut App) {
 fn execute_query(access: &mut DaemonAccess, cql: &str) -> Result<HitsPage> {
 	let reply = access.query_execute(cql.to_string())?;
 	let limit: u64 = 100;
+	let window_tokens: u64 = 10;
 	let hits = access.query_hits(&reply.handle, 0, limit)?;
 	let mut rows: Vec<HitRow> = Vec::with_capacity(hits.len());
 	for hit in hits {
 		let match_text = access.text_surface(hit.span.start, hit.span.end)?;
+		let left_start = hit.span.start.saturating_sub(window_tokens);
+		let left_text = access
+			.text_surface(left_start, hit.span.start)
+			.unwrap_or_default();
+		let right_text = access
+			.text_surface(hit.span.end, hit.span.end + window_tokens)
+			.unwrap_or_default();
 		rows.push(HitRow {
 			document_index: hit.document_index,
 			sentence_index: hit.sentence_index,
+			left_text,
 			match_text,
+			right_text,
 		});
 	}
 	Ok(HitsPage {
