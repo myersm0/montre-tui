@@ -8,7 +8,7 @@ pub struct StatusBarContent<'a> {
 	pub corpus_name: &'a str,
 	pub component: Option<&'a str>,
 	pub selection: Option<&'a str>,
-	pub anchor_info: Option<&'a str>,
+	pub coupler_info: Option<&'a str>,
 	pub connected: bool,
 }
 
@@ -40,7 +40,7 @@ pub fn draw_status_bar(frame: &mut Frame, area: Rect, content: &StatusBarContent
 
 	spans.push(separator);
 	spans.push(Span::styled(
-		content.anchor_info.unwrap_or("—").to_string(),
+		content.coupler_info.unwrap_or("—").to_string(),
 		theme.status_bar,
 	));
 	spans.push(Span::styled(" ", theme.status_bar));

@@ -242,7 +242,7 @@ fn viewport_height_estimate() -> usize {
 
 fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
 	match notification {
-		NotificationEnvelope::AnchorUpdate { interest, .. } => {
+		NotificationEnvelope::CouplerUpdate { interest, .. } => {
 			if let Interest::Sentence { doc, sent } = interest {
 				app.cursor.jump_to(doc, sent);
 				app.dirty = true;

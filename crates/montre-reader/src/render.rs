@@ -147,7 +147,7 @@ fn draw_reader_status(
 		corpus_name: access.corpus_info.name.as_str(),
 		component: component_ref,
 		selection: selection_ref,
-		anchor_info: None,
+		coupler_info: None,
 		connected: view.connected,
 	};
 	draw_status_bar(frame, area, &content, view.theme);
