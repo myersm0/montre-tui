@@ -4,6 +4,7 @@ use ratatui::widgets::BorderType;
 use crate::palette::Palette;
 
 pub struct Theme {
+	pub page_background: Style,
 	pub pane_border_active: BorderStyle,
 	pub pane_border_inactive: BorderStyle,
 	pub pane_title: Style,
@@ -33,6 +34,7 @@ pub struct BorderStyle {
 impl Theme {
 	pub fn from_palette(palette: &Palette) -> Self {
 		Self {
+			page_background: Style::default().bg(palette.page),
 			pane_border_active: BorderStyle {
 				style: Style::default().fg(palette.border_strong),
 				border_type: BorderType::Double,

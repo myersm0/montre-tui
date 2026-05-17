@@ -25,6 +25,7 @@ pub struct ViewState<'a> {
 }
 
 pub fn draw(frame: &mut Frame, access: &mut DaemonAccess, view: &ViewState) -> Result<()> {
+	frame.render_widget(Block::default().style(view.theme.page_background), frame.area());
 	let layout = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([
