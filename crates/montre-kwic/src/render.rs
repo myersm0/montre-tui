@@ -3,7 +3,6 @@ use montre_tui_core::key_hint::{draw_hints_bar, KeyHint};
 use montre_tui_core::status_bar::{draw_status_bar, StatusBarContent};
 use montre_tui_core::theme::Theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::Modifier;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -73,16 +72,16 @@ fn draw_query_bar(frame: &mut Frame, area: Rect, view: &ViewState) {
 		spans.push(Span::styled(before_cursor.to_string(), view.theme.text_default));
 		if let Some(next_char) = at_and_after.chars().next() {
 			let next_char_len = next_char.len_utf8();
-			spans.push(Span::styled(next_char.to_string(), view.theme.cursor_sentence));
+			spans.push(Span::styled(next_char.to_string(), view.theme.input_cursor));
 			spans.push(Span::styled(
 				at_and_after[next_char_len..].to_string(),
 				view.theme.text_default,
 			));
 		} else {
-			spans.push(Span::styled(" ", view.theme.cursor_sentence));
+			spans.push(Span::styled(" ", view.theme.input_cursor));
 		}
 	} else {
-		spans.push(Span::styled(view.query_bar.text.clone(), view.theme.hints_bar));
+		spans.push(Span::styled(view.query_bar.text.clone(), view.theme.text_subtle));
 	}
 
 	frame.render_widget(Line::from(spans), area);
@@ -112,13 +111,13 @@ fn draw_kwic_pane(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &V
 	}
 
 	let Some(page) = view.page else {
-		let placeholder = Line::from(Span::styled("No query yet.", view.theme.hints_bar));
+		let placeholder = Line::from(Span::styled("No query yet.", view.theme.text_subtle));
 		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
 		return;
 	};
 
 	if page.rows.is_empty() {
-		let placeholder = Line::from(Span::styled("No matches.", view.theme.hints_bar));
+		let placeholder = Line::from(Span::styled("No matches.", view.theme.text_subtle));
 		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
 		return;
 	}
@@ -147,7 +146,7 @@ fn draw_kwic_pane(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &V
 				"  (+{} more — paging lands in v1)",
 				page.hit_count - page.rows.len() as u64,
 			),
-			view.theme.hints_bar,
+			view.theme.text_subtle,
 		)));
 	}
 
@@ -166,23 +165,20 @@ fn render_hit_row(row: &HitRow, access: &DaemonAccess, is_cursor: bool, theme: &
 	let left_field = pad_or_truncate_left(row.left_text.trim(), context_col_width);
 	let right_field = pad_or_truncate_right(row.right_text.trim(), context_col_width);
 	let row_style = if is_cursor {
-		theme.cursor_sentence
+		theme.selected_row
 	} else {
 		theme.text_default
 	};
 	Line::from(vec![
-		Span::styled(doc_field, theme.hints_bar),
+		Span::styled(doc_field, theme.text_subtle),
 		Span::raw(" "),
-		Span::styled(sent_field, theme.hints_bar),
+		Span::styled(sent_field, theme.text_subtle),
 		Span::raw("  "),
-		Span::styled(left_field, theme.hints_bar),
+		Span::styled(left_field, theme.text_subtle),
 		Span::raw(" "),
-		Span::styled(
-			row.match_text.clone(),
-			theme.text_default.add_modifier(Modifier::BOLD),
-		),
+		Span::styled(row.match_text.clone(), theme.kwic_match),
 		Span::raw(" "),
-		Span::styled(right_field, theme.hints_bar),
+		Span::styled(right_field, theme.text_subtle),
 	])
 	.style(row_style)
 }
@@ -251,6 +247,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 		.borders(Borders::ALL)
 		.border_type(theme.overlay_border.border_type)
 		.border_style(theme.overlay_border.style)
+		.style(theme.overlay_background)
 		.title(Span::styled(" kwic help ", theme.overlay_title));
 	let inner = block.inner(overlay_area);
 	frame.render_widget(block, overlay_area);
@@ -293,6 +290,7 @@ fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Th
 		.borders(Borders::ALL)
 		.border_type(theme.overlay_border.border_type)
 		.border_style(theme.overlay_border.style)
+		.style(theme.overlay_background)
 		.title(Span::styled(" daemon shutdown ", theme.overlay_title));
 	let inner = block.inner(overlay_area);
 	frame.render_widget(block, overlay_area);
@@ -301,7 +299,7 @@ fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Th
 		Line::from(""),
 		Line::from(Span::styled(format!("  reason: {}", reason), theme.error)),
 		Line::from(""),
-		Line::from(Span::styled("  exiting...".to_string(), theme.hints_bar)),
+		Line::from(Span::styled("  exiting...".to_string(), theme.text_subtle)),
 	];
 	frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }

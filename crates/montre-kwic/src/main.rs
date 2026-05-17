@@ -18,6 +18,7 @@ use crossterm::terminal::{
 };
 use montre_tui_core::daemon::client::NotificationEnvelope;
 use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
+use montre_tui_core::palette::Palette;
 use montre_tui_core::theme::Theme;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -48,7 +49,7 @@ fn main() -> Result<()> {
 		}
 	};
 	access.subscribe_roster()?;
-	let theme = Theme::default_dark();
+	let theme = Theme::from_palette(&Palette::grundtvig_dark());
 
 	let mut terminal = init_terminal()?;
 	let result = run_loop(&mut terminal, access, theme);

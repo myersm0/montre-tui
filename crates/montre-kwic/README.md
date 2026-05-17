@@ -45,4 +45,3 @@ Four horizontal regions, top to bottom: an always-visible query bar, the concord
 - First 100 hits per query. A banner reports when more exist; paging keys are pending.
 - Single result handle at a time — a new query discards the previous result. Named-result storage and recall (`:save` / `:load`) is planned.
 - Fixed column widths. Wide matches or rich context may clip on narrow terminals.
-

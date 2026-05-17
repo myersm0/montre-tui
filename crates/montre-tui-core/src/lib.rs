@@ -1,4 +1,5 @@
 pub mod key_hint;
+pub mod palette;
 pub mod sentence_source;
 pub mod status_bar;
 pub mod theme;

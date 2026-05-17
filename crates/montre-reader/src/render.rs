@@ -109,7 +109,7 @@ fn draw_reader_pane(
 
 fn render_sentence_line(sentence: &SentenceView, is_cursor: bool, theme: &Theme) -> Line<'static> {
 	let (marker, body_style) = if is_cursor {
-		(Span::styled("▌ ", theme.cursor_marker), theme.cursor_sentence)
+		(Span::styled("▌ ", theme.cursor_marker), theme.selected_row)
 	} else {
 		(Span::raw("  "), theme.text_default)
 	};
@@ -162,6 +162,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 		.borders(Borders::ALL)
 		.border_type(theme.overlay_border.border_type)
 		.border_style(theme.overlay_border.style)
+		.style(theme.overlay_background)
 		.title(Span::styled(" reader help ", theme.overlay_title));
 	let inner = block.inner(overlay_area);
 	frame.render_widget(block, overlay_area);
@@ -198,6 +199,7 @@ fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Th
 		.borders(Borders::ALL)
 		.border_type(theme.overlay_border.border_type)
 		.border_style(theme.overlay_border.style)
+		.style(theme.overlay_background)
 		.title(Span::styled(" daemon shutdown ", theme.overlay_title));
 	let inner = block.inner(overlay_area);
 	frame.render_widget(block, overlay_area);
@@ -211,7 +213,7 @@ fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Th
 		Line::from(""),
 		Line::from(Span::styled(
 			"  exiting...".to_string(),
-			theme.hints_bar,
+			theme.text_subtle,
 		)),
 	];
 	let paragraph = Paragraph::new(Text::from(lines));
