@@ -4,9 +4,10 @@ use std::sync::mpsc::Receiver;
 use anyhow::Result;
 use montre_tui_core::daemon::client::NotificationEnvelope;
 use montre_tui_core::protocol::{
-	CorpusDocumentsParams, CorpusInfo, Hit, Interest, InterestKind, ProcessKind,
-	PublishInterestParams, QueryDiscardParams, QueryExecuteParams, QueryExecuteReply,
-	QueryHitsParams, RegisterParams, TextSurfaceParams,
+	CorpusDocumentsParams, CorpusInfo, CouplerCreateParams, CouplerKind, Hit, Interest,
+	InterestKind, ProcessInfo, ProcessKind, PublishInterestParams, QueryDiscardParams,
+	QueryExecuteParams, QueryExecuteReply, QueryHitsParams, RegisterParams,
+	SessionRosterParams, SubscriptionParams, TextSurfaceParams,
 };
 use montre_tui_core::DaemonClient;
 
@@ -102,5 +103,31 @@ impl DaemonAccess {
 		self.client
 			.publish_interest(PublishInterestParams { interest })?;
 		Ok(())
+	}
+
+	pub fn subscribe_roster(&mut self) -> Result<()> {
+		self.client.subscription_subscribe(SubscriptionParams {
+			topic: "roster_changed".to_string(),
+		})?;
+		Ok(())
+	}
+
+	pub fn session_roster(&mut self) -> Result<Vec<ProcessInfo>> {
+		let reply = self.client.roster(SessionRosterParams { filter: None })?;
+		Ok(reply.processes)
+	}
+
+	pub fn coupler_create(
+		&mut self,
+		master_id: u32,
+		follower_id: u32,
+		kind: CouplerKind,
+	) -> Result<u32> {
+		let reply = self.client.coupler_create(CouplerCreateParams {
+			master_id,
+			follower_id,
+			kind,
+		})?;
+		Ok(reply.coupler_id)
 	}
 }

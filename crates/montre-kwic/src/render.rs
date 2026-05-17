@@ -24,6 +24,7 @@ pub struct ViewState<'a> {
 	pub query_bar: &'a QueryBar,
 	pub page: Option<&'a HitsPage>,
 	pub error: Option<&'a str>,
+	pub coupled_count: usize,
 	pub connected: bool,
 	pub theme: &'a Theme,
 }
@@ -221,11 +222,22 @@ fn draw_kwic_status(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: 
 		}
 		_ => None,
 	};
+	let coupler_string;
+	let coupler_info = if view.coupled_count == 0 {
+		None
+	} else {
+		coupler_string = if view.coupled_count == 1 {
+			"1 follower".to_string()
+		} else {
+			format!("{} followers", view.coupled_count)
+		};
+		Some(coupler_string.as_str())
+	};
 	let content = StatusBarContent {
 		corpus_name: access.corpus_info.name.as_str(),
 		component: None,
 		selection,
-		coupler_info: None,
+		coupler_info,
 		connected: view.connected,
 	};
 	draw_status_bar(frame, area, &content, view.theme);

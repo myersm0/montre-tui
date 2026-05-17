@@ -3,6 +3,7 @@ mod page;
 mod query_bar;
 mod render;
 
+use std::collections::HashSet;
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::sync::mpsc::TryRecvError;
@@ -16,7 +17,7 @@ use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use montre_tui_core::daemon::client::NotificationEnvelope;
-use montre_tui_core::protocol::Interest;
+use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
 use montre_tui_core::theme::Theme;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -38,7 +39,7 @@ struct Cli {
 
 fn main() -> Result<()> {
 	let cli = Cli::parse();
-	let access = match cli.socket {
+	let mut access = match cli.socket {
 		Some(socket_path) => DaemonAccess::connect_socket(&socket_path)?,
 		None => {
 			let corpus_path = cli.corpus_path.expect("clap enforces presence when --socket is absent");
@@ -46,6 +47,7 @@ fn main() -> Result<()> {
 			DaemonAccess::connect_or_spawn(&canonical)?
 		}
 	};
+	access.subscribe_roster()?;
 	let theme = Theme::default_dark();
 
 	let mut terminal = init_terminal()?;
@@ -76,6 +78,7 @@ struct App {
 	query_bar: QueryBar,
 	page: Option<HitsPage>,
 	error: Option<String>,
+	coupled_followers: HashSet<u32>,
 	connected: bool,
 	shutdown_initiated_at: Option<Instant>,
 	dirty: bool,
@@ -91,6 +94,7 @@ impl App {
 			query_bar: QueryBar::new(),
 			page: None,
 			error: None,
+			coupled_followers: HashSet::new(),
 			connected: true,
 			shutdown_initiated_at: None,
 			dirty: true,
@@ -107,6 +111,7 @@ fn run_loop(
 	let poll_interval = Duration::from_millis(50);
 	let shutdown_grace = Duration::from_millis(500);
 	let mut app = App::new(access, theme);
+	auto_couple_existing(&mut app);
 
 	loop {
 		if app.quit {
@@ -154,6 +159,7 @@ fn run_loop(
 				query_bar: &app.query_bar,
 				page: app.page.as_ref(),
 				error: app.error.as_deref(),
+				coupled_count: app.coupled_followers.len(),
 				connected: app.connected,
 				theme: &app.theme,
 			};
@@ -322,6 +328,37 @@ fn publish_current_hit(app: &mut App) {
 	let _ = app.access.publish_interest(interest);
 }
 
+fn auto_couple_existing(app: &mut App) {
+	let roster = match app.access.session_roster() {
+		Ok(processes) => processes,
+		Err(_) => return,
+	};
+	for process in roster {
+		auto_couple(app, &process);
+	}
+}
+
+fn auto_couple(app: &mut App, process: &ProcessInfo) {
+	let our_id = app.access.process_id;
+	if process.id == our_id {
+		return;
+	}
+	if !process.consumes.contains(&InterestKind::Sentence) {
+		return;
+	}
+	if app.coupled_followers.contains(&process.id) {
+		return;
+	}
+	let follower_id = process.id;
+	let result = app
+		.access
+		.coupler_create(our_id, follower_id, CouplerKind::KwicSelection);
+	if result.is_ok() {
+		app.coupled_followers.insert(follower_id);
+		app.dirty = true;
+	}
+}
+
 fn viewport_step_estimate() -> usize {
 	crossterm::terminal::size()
 		.map(|(_, rows)| rows.saturating_sub(4) as usize)
@@ -385,6 +422,17 @@ fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
 	match notification {
 		NotificationEnvelope::Shutdown { reason, .. } => {
 			begin_shutdown(app, reason);
+		}
+		NotificationEnvelope::RosterChanged { event, process } => {
+			match event.as_str() {
+				"registered" => auto_couple(app, &process),
+				"unregistered" => {
+					if app.coupled_followers.remove(&process.id) {
+						app.dirty = true;
+					}
+				}
+				_ => {}
+			}
 		}
 		_ => {}
 	}
