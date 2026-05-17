@@ -4,14 +4,16 @@ Terminal interfaces for [Montre](https://github.com/myersm0/montre), a corpus qu
 
 `montre-tui` is built around a local per-corpus session daemon (`montre serve`) coordinating multiple independent terminal clients: readers, KWIC browsers, CoNLL-U inspectors, document pickers, vocabulary, amed-results browsers, and Julia/Python REPL sessions.
 
-Rather than embedding a full multipane UI in a single process, each view runs in its own terminal pane, split, or window. Your favorite terminal multiplexer (e.g. tmux) or window manager handles layout; the daemon handles shared state, anchors, named results, and query history.
+Rather than embedding a full multipane UI in a single process, each view runs in its own terminal pane, split, or window. Your favorite terminal multiplexer (e.g. tmux, zellij) or window manager handles layout; the daemon handles shared state, anchors, named results, and query history.
 
-The result is a lightweight, composable workflow that you could set up as follows, for example:
+The result is a lightweight, composable workflow that you could set up in any way you like, even across monitors. For example, you could have:
 - one pane following a French text
 - another showing aligned English sentences
 - another browsing KWIC results
 - another inspecting raw CoNLL-U annotations
 - a Julia or Python REPL connected to the same corpus session for statistics and visualizations
+
+Sample tmux and zellij layouts (fully configurable to your preferences) will be provided.
 
 ## Status
 
