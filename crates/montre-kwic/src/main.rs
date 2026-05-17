@@ -1,4 +1,6 @@
 mod daemon_access;
+mod page;
+mod query_bar;
 mod render;
 
 use std::io::{self, Stdout};
@@ -19,6 +21,8 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use crate::daemon_access::DaemonAccess;
+use crate::page::{HitRow, HitsPage};
+use crate::query_bar::QueryBar;
 use crate::render::{Mode, ViewState};
 
 #[derive(Parser)]
@@ -68,6 +72,9 @@ struct App {
 	access: DaemonAccess,
 	theme: Theme,
 	mode: Mode,
+	query_bar: QueryBar,
+	page: Option<HitsPage>,
+	error: Option<String>,
 	connected: bool,
 	shutdown_initiated_at: Option<Instant>,
 	dirty: bool,
@@ -80,6 +87,9 @@ impl App {
 			access,
 			theme,
 			mode: Mode::Normal,
+			query_bar: QueryBar::new(),
+			page: None,
+			error: None,
 			connected: true,
 			shutdown_initiated_at: None,
 			dirty: true,
@@ -140,6 +150,9 @@ fn run_loop(
 		if app.dirty {
 			let view = ViewState {
 				mode: &app.mode,
+				query_bar: &app.query_bar,
+				page: app.page.as_ref(),
+				error: app.error.as_deref(),
 				connected: app.connected,
 				theme: &app.theme,
 			};
@@ -164,6 +177,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
 			}
 			_ => {}
 		},
+		Mode::Edit => handle_edit_key(app, key),
 		Mode::Normal => handle_normal_key(app, key),
 	}
 }
@@ -181,8 +195,153 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
 			app.mode = Mode::Help;
 			app.dirty = true;
 		}
+		KeyCode::Char('i') => {
+			app.mode = Mode::Edit;
+			app.dirty = true;
+		}
+		KeyCode::Down | KeyCode::Char('j') => move_cursor(app, 1),
+		KeyCode::Up | KeyCode::Char('k') => move_cursor(app, -1),
+		KeyCode::PageDown => {
+			let step = viewport_step_estimate() as isize;
+			move_cursor(app, step);
+		}
+		KeyCode::PageUp => {
+			let step = viewport_step_estimate() as isize;
+			move_cursor(app, -step);
+		}
+		KeyCode::Home | KeyCode::Char('g') => jump_cursor(app, 0),
+		KeyCode::End | KeyCode::Char('G') => {
+			let last = app.page.as_ref().map(|page| page.rows.len().saturating_sub(1));
+			if let Some(target) = last {
+				jump_cursor(app, target);
+			}
+		}
 		_ => {}
 	}
+}
+
+fn handle_edit_key(app: &mut App, key: KeyEvent) {
+	if key.modifiers.contains(KeyModifiers::CONTROL) {
+		if matches!(key.code, KeyCode::Char('c')) {
+			app.quit = true;
+		}
+		return;
+	}
+	match key.code {
+		KeyCode::Esc => {
+			app.mode = Mode::Normal;
+			app.dirty = true;
+		}
+		KeyCode::Enter => {
+			if !app.query_bar.text.trim().is_empty() {
+				run_query(app);
+				app.mode = Mode::Normal;
+			}
+			app.dirty = true;
+		}
+		KeyCode::Char(character) => {
+			app.query_bar.insert_char(character);
+			app.dirty = true;
+		}
+		KeyCode::Backspace => {
+			app.query_bar.backspace();
+			app.dirty = true;
+		}
+		KeyCode::Left => {
+			app.query_bar.move_left();
+			app.dirty = true;
+		}
+		KeyCode::Right => {
+			app.query_bar.move_right();
+			app.dirty = true;
+		}
+		KeyCode::Home => {
+			app.query_bar.move_to_start();
+			app.dirty = true;
+		}
+		KeyCode::End => {
+			app.query_bar.move_to_end();
+			app.dirty = true;
+		}
+		_ => {}
+	}
+}
+
+fn move_cursor(app: &mut App, delta: isize) {
+	let Some(page) = &mut app.page else {
+		return;
+	};
+	if page.rows.is_empty() {
+		return;
+	}
+	let last = page.rows.len() - 1;
+	let target = (page.cursor as isize + delta).clamp(0, last as isize) as usize;
+	if target != page.cursor {
+		page.cursor = target;
+		app.dirty = true;
+	}
+}
+
+fn jump_cursor(app: &mut App, target: usize) {
+	let Some(page) = &mut app.page else {
+		return;
+	};
+	if page.rows.is_empty() {
+		return;
+	}
+	let clamped = target.min(page.rows.len() - 1);
+	if clamped != page.cursor {
+		page.cursor = clamped;
+		app.dirty = true;
+	}
+}
+
+fn viewport_step_estimate() -> usize {
+	crossterm::terminal::size()
+		.map(|(_, rows)| rows.saturating_sub(4) as usize)
+		.unwrap_or(20)
+}
+
+fn run_query(app: &mut App) {
+	let cql = app.query_bar.text.trim().to_string();
+	if cql.is_empty() {
+		return;
+	}
+	let prior_handle = app.page.as_ref().map(|page| page.handle.clone());
+	if let Some(handle) = prior_handle {
+		let _ = app.access.query_discard(&handle);
+	}
+	app.page = None;
+	app.error = None;
+	match execute_query(&mut app.access, &cql) {
+		Ok(page) => {
+			app.page = Some(page);
+		}
+		Err(error) => {
+			app.error = Some(error.to_string());
+		}
+	}
+}
+
+fn execute_query(access: &mut DaemonAccess, cql: &str) -> Result<HitsPage> {
+	let reply = access.query_execute(cql.to_string())?;
+	let limit: u64 = 100;
+	let hits = access.query_hits(&reply.handle, 0, limit)?;
+	let mut rows: Vec<HitRow> = Vec::with_capacity(hits.len());
+	for hit in hits {
+		let match_text = access.text_surface(hit.span.start, hit.span.end)?;
+		rows.push(HitRow {
+			document_index: hit.document_index,
+			sentence_index: hit.sentence_index,
+			match_text,
+		});
+	}
+	Ok(HitsPage {
+		handle: reply.handle,
+		hit_count: reply.hit_count,
+		rows,
+		cursor: 0,
+	})
 }
 
 fn handle_notification(app: &mut App, notification: NotificationEnvelope) {

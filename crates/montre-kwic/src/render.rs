@@ -8,15 +8,21 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 use crate::daemon_access::DaemonAccess;
+use crate::page::{HitRow, HitsPage};
+use crate::query_bar::QueryBar;
 
 pub enum Mode {
 	Normal,
+	Edit,
 	Help,
 	ShuttingDown { reason: String },
 }
 
 pub struct ViewState<'a> {
 	pub mode: &'a Mode,
+	pub query_bar: &'a QueryBar,
+	pub page: Option<&'a HitsPage>,
+	pub error: Option<&'a str>,
 	pub connected: bool,
 	pub theme: &'a Theme,
 }
@@ -37,13 +43,13 @@ pub fn draw(frame: &mut Frame, access: &DaemonAccess, view: &ViewState) -> Resul
 	let hints_area = layout[2];
 	let status_area = layout[3];
 
-	draw_query_bar(frame, query_bar_area, view.theme);
-	draw_kwic_pane(frame, body_area, view.theme);
-	draw_hints_bar(frame, hints_area, &kwic_hints(), view.theme);
+	draw_query_bar(frame, query_bar_area, view);
+	draw_kwic_pane(frame, body_area, access, view);
+	draw_hints_bar(frame, hints_area, &kwic_hints(view), view.theme);
 	draw_kwic_status(frame, status_area, access, view);
 
 	match view.mode {
-		Mode::Normal => {}
+		Mode::Normal | Mode::Edit => {}
 		Mode::Help => draw_help_overlay(frame, frame.area(), view.theme),
 		Mode::ShuttingDown { reason } => draw_shutdown_overlay(frame, frame.area(), reason, view.theme),
 	}
@@ -51,30 +57,144 @@ pub fn draw(frame: &mut Frame, access: &DaemonAccess, view: &ViewState) -> Resul
 	Ok(())
 }
 
-fn draw_query_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
-	let line = Line::from(vec![Span::styled(" » ", theme.hints_key)]);
-	frame.render_widget(line, area);
+fn draw_query_bar(frame: &mut Frame, area: Rect, view: &ViewState) {
+	let prompt_style = match view.mode {
+		Mode::Edit => view.theme.cursor_marker,
+		_ => view.theme.hints_key,
+	};
+	let mut spans = vec![Span::styled(" » ", prompt_style)];
+
+	if matches!(view.mode, Mode::Edit) {
+		let text = &view.query_bar.text;
+		let cursor = view.query_bar.cursor_byte.min(text.len());
+		let (before_cursor, at_and_after) = text.split_at(cursor);
+		spans.push(Span::styled(before_cursor.to_string(), view.theme.text_default));
+		if let Some(next_char) = at_and_after.chars().next() {
+			let next_char_len = next_char.len_utf8();
+			spans.push(Span::styled(next_char.to_string(), view.theme.cursor_sentence));
+			spans.push(Span::styled(
+				at_and_after[next_char_len..].to_string(),
+				view.theme.text_default,
+			));
+		} else {
+			spans.push(Span::styled(" ", view.theme.cursor_sentence));
+		}
+	} else {
+		spans.push(Span::styled(view.query_bar.text.clone(), view.theme.hints_bar));
+	}
+
+	frame.render_widget(Line::from(spans), area);
 }
 
-fn draw_kwic_pane(frame: &mut Frame, area: Rect, theme: &Theme) {
+fn draw_kwic_pane(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &ViewState) {
+	let title = match view.page {
+		Some(page) => format!(" KWIC ({} hits) ", page.hit_count),
+		None => " KWIC ".to_string(),
+	};
+
 	let block = Block::default()
 		.borders(Borders::ALL)
-		.border_type(theme.pane_border_active.border_type)
-		.border_style(theme.pane_border_active.style)
-		.title(Span::styled(" KWIC ", theme.pane_title));
-
+		.border_type(view.theme.pane_border_active.border_type)
+		.border_style(view.theme.pane_border_active.style)
+		.title(Span::styled(title, view.theme.pane_title));
 	let inner = block.inner(area);
 	frame.render_widget(block, area);
 
-	let placeholder = Line::from(Span::styled("No query yet.", theme.hints_bar));
-	frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
+	if let Some(error) = view.error {
+		let paragraph = Paragraph::new(Text::from(Line::from(Span::styled(
+			error.to_string(),
+			view.theme.error,
+		))));
+		frame.render_widget(paragraph, inner);
+		return;
+	}
+
+	let Some(page) = view.page else {
+		let placeholder = Line::from(Span::styled("No query yet.", view.theme.hints_bar));
+		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
+		return;
+	};
+
+	if page.rows.is_empty() {
+		let placeholder = Line::from(Span::styled("No matches.", view.theme.hints_bar));
+		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
+		return;
+	}
+
+	let inner_height = inner.height as usize;
+	if inner_height == 0 {
+		return;
+	}
+	let top_margin = (inner_height / 4).max(2);
+	let scroll = page.cursor.saturating_sub(top_margin);
+	let visible_end = (scroll + inner_height).min(page.rows.len());
+
+	let mut lines: Vec<Line> = page.rows[scroll..visible_end]
+		.iter()
+		.enumerate()
+		.map(|(local_index, row)| {
+			let global_index = scroll + local_index;
+			let is_cursor = global_index == page.cursor;
+			render_hit_row(row, access, is_cursor, view.theme)
+		})
+		.collect();
+
+	if visible_end >= page.rows.len() && (page.rows.len() as u64) < page.hit_count {
+		lines.push(Line::from(Span::styled(
+			format!(
+				"  (+{} more — paging lands in v1)",
+				page.hit_count - page.rows.len() as u64,
+			),
+			view.theme.hints_bar,
+		)));
+	}
+
+	frame.render_widget(Paragraph::new(Text::from(lines)), inner);
+}
+
+fn render_hit_row(row: &HitRow, access: &DaemonAccess, is_cursor: bool, theme: &Theme) -> Line<'static> {
+	let document_name = access
+		.document(row.document_index)
+		.map(|summary| summary.name.clone())
+		.unwrap_or_default();
+	let document_field = format!("{:<20}", truncate(&document_name, 20));
+	let sentence_field = format!(" sent {:>5} ", row.sentence_index);
+	let row_style = if is_cursor {
+		theme.cursor_sentence
+	} else {
+		theme.text_default
+	};
+	Line::from(vec![
+		Span::styled(document_field, theme.hints_bar),
+		Span::styled(sentence_field, theme.hints_bar),
+		Span::styled(row.match_text.clone(), theme.text_default),
+	])
+	.style(row_style)
+}
+
+fn truncate(text: &str, width: usize) -> String {
+	if text.chars().count() <= width {
+		text.to_string()
+	} else {
+		let mut result: String = text.chars().take(width.saturating_sub(1)).collect();
+		result.push('…');
+		result
+	}
 }
 
 fn draw_kwic_status(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &ViewState) {
+	let selection_string;
+	let selection = match view.page {
+		Some(page) if !page.rows.is_empty() => {
+			selection_string = format!("hit {} of {}", page.cursor + 1, page.hit_count);
+			Some(selection_string.as_str())
+		}
+		_ => None,
+	};
 	let content = StatusBarContent {
 		corpus_name: access.corpus_info.name.as_str(),
 		component: None,
-		selection: None,
+		selection,
 		coupler_info: None,
 		connected: view.connected,
 	};
@@ -94,8 +214,20 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 	frame.render_widget(block, overlay_area);
 
 	let entries = [
+		("i", "enter query"),
+		("↑ ↓  j k", "previous / next hit"),
+		("PgUp PgDn", "screen step"),
+		("Home  g", "first hit"),
+		("End   G", "last hit"),
+		("", ""),
+		("Edit mode:", ""),
+		("Enter", "run query"),
+		("Esc", "cancel edit"),
+		("← →", "cursor"),
+		("Home End", "start / end of input"),
+		("", ""),
 		("?", "toggle help"),
-		("q  Esc", "quit"),
+		("q  Esc", "quit (Normal)"),
 	];
 	let lines: Vec<Line> = entries
 		.iter()
@@ -150,9 +282,24 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 		.split(vertical[1])[1]
 }
 
-fn kwic_hints() -> Vec<KeyHint> {
-	vec![
-		KeyHint::new("?", "help"),
-		KeyHint::new("q", "quit"),
-	]
+fn kwic_hints(view: &ViewState) -> Vec<KeyHint> {
+	match view.mode {
+		Mode::Edit => vec![
+			KeyHint::new("Enter", "run"),
+			KeyHint::new("Esc", "cancel"),
+		],
+		Mode::Normal if view.page.is_some() => vec![
+			KeyHint::new("i", "query"),
+			KeyHint::new("jk", "hit"),
+			KeyHint::new("PgUp/PgDn", "screen"),
+			KeyHint::new("?", "help"),
+			KeyHint::new("q", "quit"),
+		],
+		Mode::Normal => vec![
+			KeyHint::new("i", "query"),
+			KeyHint::new("?", "help"),
+			KeyHint::new("q", "quit"),
+		],
+		_ => vec![],
+	}
 }
