@@ -3,6 +3,7 @@ resolver = "2"
 members = [
 	"crates/montre-tui-core",
 	"crates/montre-reader",
+	"crates/montre-kwic",
 ]
 
 [workspace.package]
