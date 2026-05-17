@@ -109,12 +109,14 @@ fn draw_reader_pane(
 }
 
 fn render_sentence_line(sentence: &SentenceView, is_cursor: bool, theme: &Theme) -> Line<'static> {
-	let (marker, body_style) = if is_cursor {
-		(Span::styled("▌ ", theme.cursor_marker), theme.selected_row)
+	let styles = theme.row_styles(is_cursor);
+	let marker = if is_cursor {
+		Span::styled("▌ ", styles.cursor_marker)
 	} else {
-		(Span::raw("  "), theme.text_default)
+		Span::raw("  ")
 	};
-	Line::from(vec![marker, Span::styled(sentence.surface.clone(), body_style)])
+	Line::from(vec![marker, Span::styled(sentence.surface.clone(), styles.text_default)])
+		.style(styles.background)
 }
 
 fn draw_reader_status(

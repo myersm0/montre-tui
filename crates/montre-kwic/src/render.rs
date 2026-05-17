@@ -82,7 +82,7 @@ fn draw_query_bar(frame: &mut Frame, area: Rect, view: &ViewState) {
 			spans.push(Span::styled(" ", view.theme.input_cursor));
 		}
 	} else {
-		spans.push(Span::styled(view.query_bar.text.clone(), view.theme.text_subtle));
+		spans.push(Span::styled(view.query_bar.text.clone(), view.theme.text_default));
 	}
 
 	frame.render_widget(Line::from(spans), area);
@@ -112,13 +112,13 @@ fn draw_kwic_pane(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &V
 	}
 
 	let Some(page) = view.page else {
-		let placeholder = Line::from(Span::styled("No query yet.", view.theme.text_subtle));
+		let placeholder = Line::from(Span::styled("No query yet.", view.theme.text_default));
 		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
 		return;
 	};
 
 	if page.rows.is_empty() {
-		let placeholder = Line::from(Span::styled("No matches.", view.theme.text_subtle));
+		let placeholder = Line::from(Span::styled("No matches.", view.theme.text_default));
 		frame.render_widget(Paragraph::new(Text::from(placeholder)), inner);
 		return;
 	}
@@ -147,7 +147,7 @@ fn draw_kwic_pane(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: &V
 				"  (+{} more — paging lands in v1)",
 				page.hit_count - page.rows.len() as u64,
 			),
-			view.theme.text_subtle,
+			view.theme.text_default,
 		)));
 	}
 
@@ -165,23 +165,19 @@ fn render_hit_row(row: &HitRow, access: &DaemonAccess, is_cursor: bool, theme: &
 	let sent_field = format!("sent {:>5}", row.sentence_index);
 	let left_field = pad_or_truncate_left(row.left_text.trim(), context_col_width);
 	let right_field = pad_or_truncate_right(row.right_text.trim(), context_col_width);
-	let row_style = if is_cursor {
-		theme.selected_row
-	} else {
-		theme.text_default
-	};
+	let styles = theme.row_styles(is_cursor);
 	Line::from(vec![
-		Span::styled(doc_field, theme.text_subtle),
+		Span::styled(doc_field, styles.text_subtle),
 		Span::raw(" "),
-		Span::styled(sent_field, theme.text_subtle),
+		Span::styled(sent_field, styles.text_subtle),
 		Span::raw("  "),
-		Span::styled(left_field, theme.text_subtle),
+		Span::styled(left_field, styles.text_default),
 		Span::raw(" "),
-		Span::styled(row.match_text.clone(), theme.kwic_match),
+		Span::styled(row.match_text.clone(), styles.kwic_match),
 		Span::raw(" "),
-		Span::styled(right_field, theme.text_subtle),
+		Span::styled(right_field, styles.text_default),
 	])
-	.style(row_style)
+	.style(styles.background)
 }
 
 fn pad_or_truncate_right(text: &str, width: usize) -> String {
@@ -300,7 +296,7 @@ fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Th
 		Line::from(""),
 		Line::from(Span::styled(format!("  reason: {}", reason), theme.error)),
 		Line::from(""),
-		Line::from(Span::styled("  exiting...".to_string(), theme.text_subtle)),
+		Line::from(Span::styled("  exiting...".to_string(), theme.text_default)),
 	];
 	frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }

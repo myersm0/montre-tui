@@ -12,22 +12,36 @@ pub struct Palette {
 	pub brick: Color,
 	pub honey: Color,
 	pub verdigris: Color,
+	pub highlight_page: Color,
+	pub highlight_body: Color,
+	pub highlight_strong: Color,
+	pub highlight_muted: Color,
+	pub highlight_brick: Color,
+	pub highlight_honey: Color,
+	pub highlight_verdigris: Color,
 }
 
 impl Palette {
 	pub fn grundtvig_dark() -> Self {
 		Self {
-			page: Color::Rgb(0x1d, 0x0d, 0x03),
-			elevated: Color::Rgb(0x2f, 0x19, 0x08),
-			recessed: Color::Rgb(0x15, 0x08, 0x02),
-			border_subtle: Color::Rgb(0x43, 0x26, 0x10),
-			border_strong: Color::Rgb(0x6c, 0x41, 0x1a),
-			text_muted: Color::Rgb(0xa8, 0x7b, 0x57),
-			text_body: Color::Rgb(0xe3, 0xc9, 0xa6),
-			text_strong: Color::Rgb(0xf9, 0xe8, 0xd2),
-			brick: Color::Rgb(0xe9, 0x6e, 0x50),
-			honey: Color::Rgb(0xe3, 0xb4, 0x52),
-			verdigris: Color::Rgb(0x6d, 0xae, 0x97),
+			page: Color::from_u32(0x001d0d03),
+			elevated: Color::from_u32(0x00e95e50),
+			recessed: Color::from_u32(0x00150802),
+			border_subtle: Color::from_u32(0x00432610),
+			border_strong: Color::from_u32(0x006c411a),
+			text_muted: Color::from_u32(0x00d3b08f),
+			text_body: Color::from_u32(0x00feebd6),
+			text_strong: Color::from_u32(0x00fff7e6),
+			brick: Color::from_u32(0x00e96e50),
+			honey: Color::from_u32(0x00e3b452),
+			verdigris: Color::from_u32(0x006dae97),
+			highlight_page: Color::from_u32(0x00fdecd5),
+			highlight_body: Color::from_u32(0x00562f12),
+			highlight_strong: Color::from_u32(0x002a1404),
+			highlight_muted: Color::from_u32(0x008f5c2f),
+			highlight_brick: Color::from_u32(0x00ae4024),
+			highlight_honey: Color::from_u32(0x00e8b347),
+			highlight_verdigris: Color::from_u32(0x0030715d),
 		}
 	}
 }

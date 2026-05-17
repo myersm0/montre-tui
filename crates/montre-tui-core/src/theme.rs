@@ -11,6 +11,10 @@ pub struct Theme {
 	pub text_default: Style,
 	pub text_subtle: Style,
 	pub selected_row: Style,
+	pub selected_text_default: Style,
+	pub selected_text_subtle: Style,
+	pub selected_kwic_match: Style,
+	pub selected_cursor_marker: Style,
 	pub input_cursor: Style,
 	pub cursor_marker: Style,
 	pub kwic_match: Style,
@@ -31,6 +35,14 @@ pub struct BorderStyle {
 	pub border_type: BorderType,
 }
 
+pub struct RowStyles {
+	pub background: Style,
+	pub text_default: Style,
+	pub text_subtle: Style,
+	pub kwic_match: Style,
+	pub cursor_marker: Style,
+}
+
 impl Theme {
 	pub fn from_palette(palette: &Palette) -> Self {
 		Self {
@@ -48,11 +60,26 @@ impl Theme {
 				.add_modifier(Modifier::BOLD),
 			text_default: Style::default().fg(palette.text_body),
 			text_subtle: Style::default().fg(palette.text_muted),
-			selected_row: Style::default().bg(palette.elevated),
-			input_cursor: Style::default().fg(palette.text_strong).bg(palette.honey),
+			selected_row: Style::default().bg(palette.highlight_page),
+			selected_text_default: Style::default()
+				.fg(palette.highlight_body)
+				.bg(palette.highlight_page),
+			selected_text_subtle: Style::default()
+				.fg(palette.highlight_muted)
+				.bg(palette.highlight_page),
+			selected_kwic_match: Style::default()
+				.fg(palette.highlight_strong)
+				.bg(palette.highlight_page)
+				.add_modifier(Modifier::BOLD),
+			selected_cursor_marker: Style::default()
+				.fg(palette.highlight_brick)
+				.bg(palette.highlight_page)
+				.add_modifier(Modifier::BOLD),
+			input_cursor: Style::default()
+				.fg(palette.text_strong)
+				.bg(palette.honey),
 			cursor_marker: Style::default()
 				.fg(palette.brick)
-				.bg(palette.elevated)
 				.add_modifier(Modifier::BOLD),
 			kwic_match: Style::default()
 				.fg(palette.text_strong)
@@ -76,6 +103,26 @@ impl Theme {
 			error: Style::default()
 				.fg(palette.brick)
 				.add_modifier(Modifier::BOLD),
+		}
+	}
+
+	pub fn row_styles(&self, selected: bool) -> RowStyles {
+		if selected {
+			RowStyles {
+				background: self.selected_row,
+				text_default: self.selected_text_default,
+				text_subtle: self.selected_text_subtle,
+				kwic_match: self.selected_kwic_match,
+				cursor_marker: self.selected_cursor_marker,
+			}
+		} else {
+			RowStyles {
+				background: Style::default(),
+				text_default: self.text_default,
+				text_subtle: self.text_subtle,
+				kwic_match: self.kwic_match,
+				cursor_marker: self.cursor_marker,
+			}
 		}
 	}
 }
