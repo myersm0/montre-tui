@@ -16,6 +16,7 @@ use crossterm::terminal::{
 	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use montre_tui_core::daemon::client::NotificationEnvelope;
+use montre_tui_core::protocol::Interest;
 use montre_tui_core::theme::Theme;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -216,6 +217,9 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
 				jump_cursor(app, target);
 			}
 		}
+		KeyCode::Enter => {
+			publish_current_hit(app);
+		}
 		_ => {}
 	}
 }
@@ -268,32 +272,54 @@ fn handle_edit_key(app: &mut App, key: KeyEvent) {
 }
 
 fn move_cursor(app: &mut App, delta: isize) {
-	let Some(page) = &mut app.page else {
-		return;
+	let moved = match app.page.as_mut() {
+		Some(page) if !page.rows.is_empty() => {
+			let last = page.rows.len() - 1;
+			let target = (page.cursor as isize + delta).clamp(0, last as isize) as usize;
+			if target != page.cursor {
+				page.cursor = target;
+				true
+			} else {
+				false
+			}
+		}
+		_ => false,
 	};
-	if page.rows.is_empty() {
-		return;
-	}
-	let last = page.rows.len() - 1;
-	let target = (page.cursor as isize + delta).clamp(0, last as isize) as usize;
-	if target != page.cursor {
-		page.cursor = target;
+	if moved {
 		app.dirty = true;
+		publish_current_hit(app);
 	}
 }
 
 fn jump_cursor(app: &mut App, target: usize) {
-	let Some(page) = &mut app.page else {
-		return;
+	let moved = match app.page.as_mut() {
+		Some(page) if !page.rows.is_empty() => {
+			let clamped = target.min(page.rows.len() - 1);
+			if clamped != page.cursor {
+				page.cursor = clamped;
+				true
+			} else {
+				false
+			}
+		}
+		_ => false,
 	};
-	if page.rows.is_empty() {
-		return;
-	}
-	let clamped = target.min(page.rows.len() - 1);
-	if clamped != page.cursor {
-		page.cursor = clamped;
+	if moved {
 		app.dirty = true;
+		publish_current_hit(app);
 	}
+}
+
+fn publish_current_hit(app: &mut App) {
+	let (handle, cursor) = match app.page.as_ref() {
+		Some(page) if !page.rows.is_empty() => (page.handle.clone(), page.cursor),
+		_ => return,
+	};
+	let interest = Interest::Hit {
+		result: handle,
+		hit_idx: cursor as u64,
+	};
+	let _ = app.access.publish_interest(interest);
 }
 
 fn viewport_step_estimate() -> usize {
@@ -316,6 +342,7 @@ fn run_query(app: &mut App) {
 	match execute_query(&mut app.access, &cql) {
 		Ok(page) => {
 			app.page = Some(page);
+			publish_current_hit(app);
 		}
 		Err(error) => {
 			app.error = Some(error.to_string());

@@ -4,9 +4,9 @@ use std::sync::mpsc::Receiver;
 use anyhow::Result;
 use montre_tui_core::daemon::client::NotificationEnvelope;
 use montre_tui_core::protocol::{
-	CorpusDocumentsParams, CorpusInfo, Hit, InterestKind, ProcessKind,
-	QueryDiscardParams, QueryExecuteParams, QueryExecuteReply, QueryHitsParams,
-	RegisterParams, TextSurfaceParams,
+	CorpusDocumentsParams, CorpusInfo, Hit, Interest, InterestKind, ProcessKind,
+	PublishInterestParams, QueryDiscardParams, QueryExecuteParams, QueryExecuteReply,
+	QueryHitsParams, RegisterParams, TextSurfaceParams,
 };
 use montre_tui_core::DaemonClient;
 
@@ -96,5 +96,11 @@ impl DaemonAccess {
 	pub fn text_surface(&mut self, start: u64, end: u64) -> Result<String> {
 		let reply = self.client.text_surface(TextSurfaceParams { start, end })?;
 		Ok(reply.surface)
+	}
+
+	pub fn publish_interest(&mut self, interest: Interest) -> Result<()> {
+		self.client
+			.publish_interest(PublishInterestParams { interest })?;
+		Ok(())
 	}
 }

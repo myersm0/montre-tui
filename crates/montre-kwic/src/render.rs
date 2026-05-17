@@ -249,6 +249,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 		("PgUp PgDn", "screen step"),
 		("Home  g", "first hit"),
 		("End   G", "last hit"),
+		("Enter", "republish current hit"),
 		("", ""),
 		("Edit mode:", ""),
 		("Enter", "run query"),
