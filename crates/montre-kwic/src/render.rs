@@ -1,10 +1,11 @@
 use anyhow::Result;
 use montre_tui_core::key_hint::{draw_hints_bar, KeyHint};
+use montre_tui_core::overlay;
 use montre_tui_core::status_bar::{draw_status_bar, StatusBarContent};
 use montre_tui_core::theme::Theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::daemon_access::DaemonAccess;
@@ -52,8 +53,8 @@ pub fn draw(frame: &mut Frame, access: &DaemonAccess, view: &ViewState) -> Resul
 
 	match view.mode {
 		Mode::Normal | Mode::Edit => {}
-		Mode::Help => draw_help_overlay(frame, frame.area(), view.theme),
-		Mode::ShuttingDown { reason } => draw_shutdown_overlay(frame, frame.area(), reason, view.theme),
+		Mode::Help => overlay::draw_help(frame, frame.area(), view.theme, "kwic help", &kwic_help_entries()),
+		Mode::ShuttingDown { reason } => overlay::draw_shutdown(frame, frame.area(), reason, view.theme),
 	}
 
 	Ok(())
@@ -236,20 +237,8 @@ fn draw_kwic_status(frame: &mut Frame, area: Rect, access: &DaemonAccess, view: 
 	draw_status_bar(frame, area, &content, view.theme);
 }
 
-fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
-	let overlay_area = centered_rect(60, 70, area);
-	frame.render_widget(Clear, overlay_area);
-
-	let block = Block::default()
-		.borders(Borders::ALL)
-		.border_type(theme.overlay_border.border_type)
-		.border_style(theme.overlay_border.style)
-		.style(theme.overlay_background)
-		.title(Span::styled(" kwic help ", theme.overlay_title));
-	let inner = block.inner(overlay_area);
-	frame.render_widget(block, overlay_area);
-
-	let entries = [
+fn kwic_help_entries() -> &'static [(&'static str, &'static str)] {
+	&[
 		("i", "enter query"),
 		("↑ ↓  j k", "previous / next hit"),
 		("PgUp PgDn", "screen step"),
@@ -265,59 +254,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 		("", ""),
 		("?", "toggle help"),
 		("q  Esc", "quit (Normal)"),
-	];
-	let lines: Vec<Line> = entries
-		.iter()
-		.map(|(keys, description)| {
-			Line::from(vec![
-				Span::styled(format!("  {:<14}", keys), theme.hints_key),
-				Span::styled(description.to_string(), theme.hints_bar),
-			])
-		})
-		.collect();
-
-	frame.render_widget(Paragraph::new(Text::from(lines)), inner);
-}
-
-fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Theme) {
-	let overlay_area = centered_rect(50, 20, area);
-	frame.render_widget(Clear, overlay_area);
-
-	let block = Block::default()
-		.borders(Borders::ALL)
-		.border_type(theme.overlay_border.border_type)
-		.border_style(theme.overlay_border.style)
-		.style(theme.overlay_background)
-		.title(Span::styled(" daemon shutdown ", theme.overlay_title));
-	let inner = block.inner(overlay_area);
-	frame.render_widget(block, overlay_area);
-
-	let lines = vec![
-		Line::from(""),
-		Line::from(Span::styled(format!("  reason: {}", reason), theme.error)),
-		Line::from(""),
-		Line::from(Span::styled("  exiting...".to_string(), theme.text_default)),
-	];
-	frame.render_widget(Paragraph::new(Text::from(lines)), inner);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-	let vertical = Layout::default()
-		.direction(Direction::Vertical)
-		.constraints([
-			Constraint::Percentage((100 - percent_y) / 2),
-			Constraint::Percentage(percent_y),
-			Constraint::Percentage((100 - percent_y) / 2),
-		])
-		.split(area);
-	Layout::default()
-		.direction(Direction::Horizontal)
-		.constraints([
-			Constraint::Percentage((100 - percent_x) / 2),
-			Constraint::Percentage(percent_x),
-			Constraint::Percentage((100 - percent_x) / 2),
-		])
-		.split(vertical[1])[1]
+	]
 }
 
 fn kwic_hints(view: &ViewState) -> Vec<KeyHint> {

@@ -1,11 +1,12 @@
 use anyhow::Result;
 use montre_tui_core::key_hint::{draw_hints_bar, KeyHint};
+use montre_tui_core::overlay;
 use montre_tui_core::sentence_source::{SentenceSource, SentenceView};
 use montre_tui_core::status_bar::{draw_status_bar, StatusBarContent};
 use montre_tui_core::theme::Theme;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::cursor::Cursor;
@@ -45,8 +46,8 @@ pub fn draw(frame: &mut Frame, access: &mut DaemonAccess, view: &ViewState) -> R
 
 	match view.mode {
 		Mode::Normal => {}
-		Mode::Help => draw_help_overlay(frame, frame.area(), view.theme),
-		Mode::ShuttingDown { reason } => draw_shutdown_overlay(frame, frame.area(), reason, view.theme),
+		Mode::Help => overlay::draw_help(frame, frame.area(), view.theme, "reader help", &reader_help_entries()),
+		Mode::ShuttingDown { reason } => overlay::draw_shutdown(frame, frame.area(), reason, view.theme),
 	}
 
 	Ok(())
@@ -157,20 +158,8 @@ fn draw_reader_status(
 	Ok(())
 }
 
-fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
-	let overlay_area = centered_rect(60, 70, area);
-	frame.render_widget(Clear, overlay_area);
-
-	let block = Block::default()
-		.borders(Borders::ALL)
-		.border_type(theme.overlay_border.border_type)
-		.border_style(theme.overlay_border.style)
-		.style(theme.overlay_background)
-		.title(Span::styled(" reader help ", theme.overlay_title));
-	let inner = block.inner(overlay_area);
-	frame.render_widget(block, overlay_area);
-
-	let entries = [
+fn reader_help_entries() -> &'static [(&'static str, &'static str)] {
+	&[
 		("↑ ↓  j k", "previous / next sentence"),
 		("PgUp PgDn", "screen step"),
 		("J K", "previous / next document"),
@@ -179,67 +168,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, theme: &Theme) {
 		("End   G", "end of document"),
 		("?", "toggle help"),
 		("q  Esc", "quit"),
-	];
-	let lines: Vec<Line> = entries
-		.iter()
-		.map(|(keys, description)| {
-			Line::from(vec![
-				Span::styled(format!("  {:<14}", keys), theme.hints_key),
-				Span::styled(description.to_string(), theme.hints_bar),
-			])
-		})
-		.collect();
-
-	let paragraph = Paragraph::new(Text::from(lines));
-	frame.render_widget(paragraph, inner);
-}
-
-fn draw_shutdown_overlay(frame: &mut Frame, area: Rect, reason: &str, theme: &Theme) {
-	let overlay_area = centered_rect(50, 20, area);
-	frame.render_widget(Clear, overlay_area);
-
-	let block = Block::default()
-		.borders(Borders::ALL)
-		.border_type(theme.overlay_border.border_type)
-		.border_style(theme.overlay_border.style)
-		.style(theme.overlay_background)
-		.title(Span::styled(" daemon shutdown ", theme.overlay_title));
-	let inner = block.inner(overlay_area);
-	frame.render_widget(block, overlay_area);
-
-	let lines = vec![
-		Line::from(""),
-		Line::from(Span::styled(
-			format!("  reason: {}", reason),
-			theme.error,
-		)),
-		Line::from(""),
-		Line::from(Span::styled(
-			"  exiting...".to_string(),
-			theme.text_subtle,
-		)),
-	];
-	let paragraph = Paragraph::new(Text::from(lines));
-	frame.render_widget(paragraph, inner);
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-	let vertical = Layout::default()
-		.direction(Direction::Vertical)
-		.constraints([
-			Constraint::Percentage((100 - percent_y) / 2),
-			Constraint::Percentage(percent_y),
-			Constraint::Percentage((100 - percent_y) / 2),
-		])
-		.split(area);
-	Layout::default()
-		.direction(Direction::Horizontal)
-		.constraints([
-			Constraint::Percentage((100 - percent_x) / 2),
-			Constraint::Percentage(percent_x),
-			Constraint::Percentage((100 - percent_x) / 2),
-		])
-		.split(vertical[1])[1]
+	]
 }
 
 pub fn reader_hints() -> Vec<KeyHint> {

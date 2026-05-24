@@ -4,24 +4,18 @@ mod query_bar;
 mod render;
 
 use std::collections::HashSet;
-use std::io::{self, Stdout};
 use std::path::PathBuf;
-use std::sync::mpsc::TryRecvError;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::execute;
-use crossterm::terminal::{
-	disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-};
 use montre_tui_core::daemon::client::NotificationEnvelope;
-use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
 use montre_tui_core::palette::Palette;
+use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
+use montre_tui_core::runtime;
+use montre_tui_core::terminal::{self, ManagedTerminal};
 use montre_tui_core::theme::Theme;
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
 
 use crate::daemon_access::DaemonAccess;
 use crate::page::{HitRow, HitsPage};
@@ -51,25 +45,10 @@ fn main() -> Result<()> {
 	access.subscribe_roster()?;
 	let theme = Theme::from_palette(&Palette::grundtvig_dark());
 
-	let mut terminal = init_terminal()?;
+	let mut terminal = terminal::init()?;
 	let result = run_loop(&mut terminal, access, theme);
-	restore_terminal(&mut terminal)?;
+	terminal::restore(&mut terminal)?;
 	result
-}
-
-fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
-	enable_raw_mode()?;
-	let mut stdout = io::stdout();
-	execute!(stdout, EnterAlternateScreen)?;
-	let backend = CrosstermBackend::new(stdout);
-	Ok(Terminal::new(backend)?)
-}
-
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
-	disable_raw_mode()?;
-	execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-	terminal.show_cursor()?;
-	Ok(())
 }
 
 struct App {
@@ -105,12 +84,10 @@ impl App {
 }
 
 fn run_loop(
-	terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+	terminal: &mut ManagedTerminal,
 	access: DaemonAccess,
 	theme: Theme,
 ) -> Result<()> {
-	let poll_interval = Duration::from_millis(50);
-	let shutdown_grace = Duration::from_millis(500);
 	let mut app = App::new(access, theme);
 	auto_couple_existing(&mut app);
 
@@ -119,12 +96,12 @@ fn run_loop(
 			break;
 		}
 		if let Some(started_at) = app.shutdown_initiated_at {
-			if started_at.elapsed() >= shutdown_grace {
+			if started_at.elapsed() >= runtime::shutdown_grace {
 				break;
 			}
 		}
 
-		if event::poll(poll_interval)? {
+		if event::poll(runtime::poll_interval)? {
 			match event::read()? {
 				Event::Key(key) if key.kind == KeyEventKind::Press => handle_key(&mut app, key),
 				Event::Resize(_, _) => app.dirty = true,
@@ -132,21 +109,7 @@ fn run_loop(
 			}
 		}
 
-		let mut pending: Vec<NotificationEnvelope> = Vec::new();
-		let mut disconnected = false;
-		{
-			let notifications = app.access.notifications();
-			loop {
-				match notifications.try_recv() {
-					Ok(notification) => pending.push(notification),
-					Err(TryRecvError::Empty) => break,
-					Err(TryRecvError::Disconnected) => {
-						disconnected = true;
-						break;
-					}
-				}
-			}
-		}
+		let (pending, disconnected) = runtime::drain_notifications(app.access.notifications());
 		for notification in pending {
 			handle_notification(&mut app, notification);
 		}
