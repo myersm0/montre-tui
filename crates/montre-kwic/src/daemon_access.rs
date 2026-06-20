@@ -6,7 +6,7 @@ use montre_tui_core::daemon::client::NotificationEnvelope;
 use montre_tui_core::protocol::{
 	CorpusDocumentsParams, CorpusInfo, CouplerCreateParams, CouplerKind, Hit, Interest,
 	InterestKind, ProcessInfo, ProcessKind, PublishInterestParams, QueryDiscardParams,
-	QueryExecuteParams, QueryExecuteReply, QueryHitsParams, RegisterParams,
+	QueryExecuteParams, QueryHitsParams, RegisterParams, ResultMetadata,
 	SessionRosterParams, SubscriptionParams, TextSurfaceParams,
 };
 use montre_tui_core::DaemonClient;
@@ -74,7 +74,7 @@ impl DaemonAccess {
 		self.documents.get(document_index as usize)
 	}
 
-	pub fn query_execute(&mut self, cql: String) -> Result<QueryExecuteReply> {
+	pub fn query_execute(&mut self, cql: String) -> Result<ResultMetadata> {
 		Ok(self.client.query_execute(QueryExecuteParams { cql })?)
 	}
 

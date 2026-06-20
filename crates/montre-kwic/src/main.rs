@@ -10,7 +10,7 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use montre_tui_core::daemon::client::NotificationEnvelope;
+use montre_tui_core::daemon::client::{NotificationEnvelope, RosterEvent};
 use montre_tui_core::palette::Palette;
 use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
 use montre_tui_core::runtime;
@@ -385,19 +385,17 @@ fn execute_query(access: &mut DaemonAccess, cql: &str) -> Result<HitsPage> {
 fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
 	match notification {
 		NotificationEnvelope::Shutdown { reason, .. } => {
-			begin_shutdown(app, reason);
+			begin_shutdown(app, reason.to_string());
 		}
-		NotificationEnvelope::RosterChanged { event, process } => {
-			match event.as_str() {
-				"registered" => auto_couple(app, &process),
-				"unregistered" => {
-					if app.coupled_followers.remove(&process.id) {
-						app.dirty = true;
-					}
+		NotificationEnvelope::RosterChanged { event, process } => match event {
+			RosterEvent::Registered => auto_couple(app, &process),
+			RosterEvent::Unregistered => {
+				if app.coupled_followers.remove(&process.id) {
+					app.dirty = true;
 				}
-				_ => {}
 			}
-		}
+			_ => {}
+		},
 		_ => {}
 	}
 }

@@ -212,7 +212,7 @@ fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
 			}
 		}
 		NotificationEnvelope::Shutdown { reason, .. } => {
-			begin_shutdown(app, reason);
+			begin_shutdown(app, reason.to_string());
 		}
 		_ => {}
 	}
