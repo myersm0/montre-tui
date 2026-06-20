@@ -7,7 +7,8 @@ use montre_tui_core::protocol::{
 	CorpusDocumentsParams, CorpusInfo, CouplerCreateParams, CouplerKind, Hit, Interest,
 	InterestKind, ProcessInfo, ProcessKind, PublishInterestParams, QueryDiscardParams,
 	QueryExecuteParams, QueryHitsParams, RegisterParams, ResultMetadata,
-	SessionRosterParams, SubscriptionParams, TextSurfaceParams,
+	SessionRosterParams, Span, SubscriptionParams, SurfaceWithTokens,
+	TextSurfaceWithTokenSpansParams,
 };
 use montre_tui_core::DaemonClient;
 
@@ -94,9 +95,11 @@ impl DaemonAccess {
 		Ok(())
 	}
 
-	pub fn text_surface(&mut self, start: u64, end: u64) -> Result<String> {
-		let reply = self.client.text_surface(TextSurfaceParams { start, end })?;
-		Ok(reply.surface)
+	pub fn surface_with_token_spans(&mut self, ranges: Vec<Span>) -> Result<Vec<SurfaceWithTokens>> {
+		let reply = self
+			.client
+			.text_surface_with_token_spans(TextSurfaceWithTokenSpansParams { ranges })?;
+		Ok(reply.results)
 	}
 
 	pub fn publish_interest(&mut self, interest: Interest) -> Result<()> {

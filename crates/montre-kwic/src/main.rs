@@ -12,7 +12,7 @@ use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use montre_tui_core::daemon::client::{NotificationEnvelope, RosterEvent};
 use montre_tui_core::palette::Palette;
-use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo};
+use montre_tui_core::protocol::{CouplerKind, Interest, InterestKind, ProcessInfo, Span, SurfaceToken};
 use montre_tui_core::runtime;
 use montre_tui_core::terminal::{self, ManagedTerminal};
 use montre_tui_core::theme::Theme;
@@ -356,22 +356,25 @@ fn execute_query(access: &mut DaemonAccess, cql: &str) -> Result<HitsPage> {
 	let limit: u64 = 100;
 	let window_tokens: u64 = 10;
 	let hits = access.query_hits(&reply.handle, 0, limit)?;
+	let ranges: Vec<Span> = hits
+		.iter()
+		.map(|hit| Span {
+			start: hit.span.start.saturating_sub(window_tokens),
+			end: hit.span.end + window_tokens,
+		})
+		.collect();
+	let surfaces = access.surface_with_token_spans(ranges)?;
 	let mut rows: Vec<HitRow> = Vec::with_capacity(hits.len());
-	for hit in hits {
-		let match_text = access.text_surface(hit.span.start, hit.span.end)?;
-		let left_start = hit.span.start.saturating_sub(window_tokens);
-		let left_text = access
-			.text_surface(left_start, hit.span.start)
-			.unwrap_or_default();
-		let right_text = access
-			.text_surface(hit.span.end, hit.span.end + window_tokens)
-			.unwrap_or_default();
+	for (hit, surface) in hits.iter().zip(surfaces) {
+		let (match_start, match_end) =
+			match_byte_range(&surface.tokens, hit.span.start, hit.span.end);
+		let text = surface.surface;
 		rows.push(HitRow {
 			document_index: hit.document_index,
 			sentence_index: hit.sentence_index,
-			left_text,
-			match_text,
-			right_text,
+			left_text: text[..match_start].to_string(),
+			match_text: text[match_start..match_end].to_string(),
+			right_text: text[match_end..].to_string(),
 		});
 	}
 	Ok(HitsPage {
@@ -380,6 +383,21 @@ fn execute_query(access: &mut DaemonAccess, cql: &str) -> Result<HitsPage> {
 		rows,
 		cursor: 0,
 	})
+}
+
+fn match_byte_range(tokens: &[SurfaceToken], match_start: u64, match_end: u64) -> (usize, usize) {
+	let mut start: Option<u64> = None;
+	let mut end: Option<u64> = None;
+	for token in tokens {
+		if token.position >= match_start && token.position < match_end {
+			start = Some(start.map_or(token.surface_start, |value| value.min(token.surface_start)));
+			end = Some(end.map_or(token.surface_end, |value| value.max(token.surface_end)));
+		}
+	}
+	match (start, end) {
+		(Some(start), Some(end)) => (start as usize, end as usize),
+		_ => (0, 0),
+	}
 }
 
 fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
