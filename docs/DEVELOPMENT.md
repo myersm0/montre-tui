@@ -26,11 +26,11 @@ One daemon per corpus, scoped to that corpus's lifetime. Auto-spawned on first c
  
 ## Couplers
  
-The daemon tracks **couplers**: typed relationships between two connected clients in which one's selection drives the other's view. When a `montre kwic` user moves the cursor onto a hit, that selection flows through a coupler to a connected `montre reader`, which scrolls to the matching sentence. The reader doesn't know about kwic; it knows it has a *master* publishing a sentence of interest, and it follows.
+The daemon tracks **couplers**: typed relationships between two connected clients in which one's selection drives the other's view. When a `montre kwic` user moves the cursor onto a hit, that selection flows through a coupler to a connected `montre reader`, which scrolls to and highlights the hit's exact token span. The reader doesn't know about kwic; it knows it has a *master* publishing a span of interest, and it follows. The span is the hit's literal `[start, end)`, so a match that straddles sentence boundaries projects faithfully rather than being widened to a containing sentence.
  
 The term is borrowed from the pipe organ. In organ building, the *montre* is the rank of pipes standing on the visible face of the instrument; *couplers* are the mechanisms that link ranks together so that playing one rank sounds others in concert. The TUI works similarly: each binary is its own rank, and couplers are how the organist puts them in concert.
  
-Couplers are typed — a `KwicSelection` coupler carries a hit, an `Alignment` coupler projects a span across parallel components, a `SentenceMirror` follows a sentence. Setting them up is interactive (a key in each binary opens coupler management); the daemon enforces compatibility between what masters publish and what followers consume.
+Couplers are typed — a `KwicSelection` coupler projects the hit's exact span, an `Alignment` coupler projects a span across parallel components, a `SentenceMirror` follows a sentence. Setting them up is interactive (a key in each binary opens coupler management); the daemon enforces compatibility between what masters publish and what followers consume.
 
 
 ## Theming
