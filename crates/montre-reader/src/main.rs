@@ -10,17 +10,24 @@ use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use montre_tui_core::daemon::client::NotificationEnvelope;
 use montre_tui_core::palette::Palette;
-use montre_tui_core::protocol::Interest;
+use montre_tui_core::protocol::{Interest, Span};
 use montre_tui_core::runtime;
 use montre_tui_core::terminal::{self, ManagedTerminal};
 use montre_tui_core::theme::Theme;
 
 use crate::cursor::Cursor;
-use crate::daemon_access::DaemonAccess;
+use crate::daemon_access::{DaemonAccess, TokenWindow};
 use crate::render::{Mode, ViewState};
 
+#[allow(non_upper_case_globals)]
+const window_back: u64 = 1024;
+#[allow(non_upper_case_globals)]
+const window_forward: u64 = 1024;
+#[allow(non_upper_case_globals)]
+const window_margin: u64 = 512;
+
 #[derive(Parser)]
-#[command(name = "montre-reader", about = "Single-document reader for Montre corpora")]
+#[command(name = "montre-reader", about = "Token-stream reader for Montre corpora")]
 struct Cli {
 	#[arg(required_unless_present = "socket")]
 	corpus_path: Option<PathBuf>,
@@ -50,6 +57,8 @@ fn main() -> Result<()> {
 struct App {
 	access: DaemonAccess,
 	cursor: Cursor,
+	window: TokenWindow,
+	highlight: Option<Span>,
 	theme: Theme,
 	mode: Mode,
 	connected: bool,
@@ -58,27 +67,25 @@ struct App {
 	quit: bool,
 }
 
-impl App {
-	fn new(access: DaemonAccess, theme: Theme) -> Self {
-		Self {
-			access,
-			cursor: Cursor::at_corpus_start(),
-			theme,
-			mode: Mode::Normal,
-			connected: true,
-			shutdown_initiated_at: None,
-			dirty: true,
-			quit: false,
-		}
+fn run_loop(terminal: &mut ManagedTerminal, mut access: DaemonAccess, theme: Theme) -> Result<()> {
+	let mut cursor = Cursor::at_corpus_start();
+	let window = build_window(&mut access, cursor.position)?;
+	if let Some(position) = window.emitted_at_or_after(cursor.position) {
+		cursor.position = position;
 	}
-}
 
-fn run_loop(
-	terminal: &mut ManagedTerminal,
-	access: DaemonAccess,
-	theme: Theme,
-) -> Result<()> {
-	let mut app = App::new(access, theme);
+	let mut app = App {
+		access,
+		cursor,
+		window,
+		highlight: None,
+		theme,
+		mode: Mode::Normal,
+		connected: true,
+		shutdown_initiated_at: None,
+		dirty: true,
+		quit: false,
+	};
 
 	loop {
 		if app.quit {
@@ -108,20 +115,88 @@ fn run_loop(
 
 		if app.dirty {
 			let view = ViewState {
-				cursor: &app.cursor,
+				cursor_position: app.cursor.position,
+				window: &app.window,
+				highlight: app.highlight.as_ref(),
 				mode: &app.mode,
 				connected: app.connected,
 				theme: &app.theme,
 			};
 			let mut render_result: Result<()> = Ok(());
 			terminal.draw(|frame| {
-				render_result = render::draw(frame, &mut app.access, &view);
+				render_result = render::draw(frame, &app.access, &view);
 			})?;
 			render_result?;
 			app.dirty = false;
 		}
 	}
 	Ok(())
+}
+
+fn build_window(access: &mut DaemonAccess, center: u64) -> Result<TokenWindow> {
+	let start = center.saturating_sub(window_back);
+	let end = center + window_forward;
+	access.fetch_window(start, end)
+}
+
+fn ensure_window(app: &mut App) {
+	let cursor = app.cursor.position;
+	let near_low = app.window.first_position().map(|first| cursor < first + window_margin).unwrap_or(true);
+	let near_high = app.window.last_position().map(|last| cursor + window_margin > last).unwrap_or(true);
+	let at_corpus_start = app.window.first_position().map(|first| first == 0).unwrap_or(false);
+	let at_corpus_end = app
+		.window
+		.last_position()
+		.map(|last| last + 1 >= app.access.token_ceiling())
+		.unwrap_or(false);
+	if (near_low && !at_corpus_start) || (near_high && !at_corpus_end) {
+		if let Ok(window) = build_window(&mut app.access, cursor) {
+			app.window = window;
+		}
+	}
+}
+
+fn move_token(app: &mut App, forward: bool) {
+	let next = if forward {
+		app.window.next_emitted(app.cursor.position)
+	} else {
+		app.window.prev_emitted(app.cursor.position)
+	};
+	if let Some(position) = next {
+		app.cursor.position = position;
+		ensure_window(app);
+		app.dirty = true;
+	}
+}
+
+fn move_rows(app: &mut App, delta: isize) {
+	let layout = render::build_layout(&app.window, inner_width());
+	if let Some(position) = layout.position_by_row_delta(app.cursor.position, delta) {
+		app.cursor.position = position;
+		ensure_window(app);
+		app.dirty = true;
+	}
+}
+
+fn jumped(app: &mut App) {
+	ensure_window(app);
+	let position = app.cursor.position;
+	if let Some(snapped) = app
+		.window
+		.emitted_at_or_before(position)
+		.or_else(|| app.window.emitted_at_or_after(position))
+	{
+		app.cursor.position = snapped;
+	}
+	app.dirty = true;
+}
+
+fn inner_width() -> usize {
+	crossterm::terminal::size().map(|(cols, _)| cols.saturating_sub(2) as usize).unwrap_or(78)
+}
+
+fn inner_height() -> usize {
+	crossterm::terminal::size().map(|(_, rows)| rows.saturating_sub(4) as usize).unwrap_or(20)
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
@@ -151,63 +226,47 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
 			app.mode = Mode::Help;
 			app.dirty = true;
 		}
-		KeyCode::Down | KeyCode::Char('j') => {
-			app.cursor.advance_sentence(&app.access);
-			app.dirty = true;
-		}
-		KeyCode::Up | KeyCode::Char('k') => {
-			app.cursor.retreat_sentence(&app.access);
-			app.dirty = true;
-		}
-		KeyCode::PageDown => {
-			let height = viewport_height_estimate();
-			app.cursor.advance_screen(&app.access, height);
-			app.dirty = true;
-		}
-		KeyCode::PageUp => {
-			let height = viewport_height_estimate();
-			app.cursor.retreat_screen(&app.access, height);
-			app.dirty = true;
-		}
+		KeyCode::Left | KeyCode::Char('h') => move_token(app, false),
+		KeyCode::Right | KeyCode::Char('l') => move_token(app, true),
+		KeyCode::Down | KeyCode::Char('j') => move_rows(app, 1),
+		KeyCode::Up | KeyCode::Char('k') => move_rows(app, -1),
+		KeyCode::PageDown => move_rows(app, inner_height() as isize),
+		KeyCode::PageUp => move_rows(app, -(inner_height() as isize)),
 		KeyCode::Char('J') => {
 			app.cursor.advance_document(&app.access);
-			app.dirty = true;
+			jumped(app);
 		}
 		KeyCode::Char('K') => {
 			app.cursor.retreat_document(&app.access);
-			app.dirty = true;
+			jumped(app);
 		}
 		KeyCode::Char(']') => {
 			app.cursor.advance_component(&app.access);
-			app.dirty = true;
+			jumped(app);
 		}
 		KeyCode::Char('[') => {
 			app.cursor.retreat_component(&app.access);
-			app.dirty = true;
+			jumped(app);
 		}
 		KeyCode::Home | KeyCode::Char('g') => {
-			app.cursor.to_document_start();
-			app.dirty = true;
+			app.cursor.to_document_start(&app.access);
+			jumped(app);
 		}
 		KeyCode::End | KeyCode::Char('G') => {
 			app.cursor.to_document_end(&app.access);
-			app.dirty = true;
+			jumped(app);
 		}
 		_ => {}
 	}
 }
 
-fn viewport_height_estimate() -> usize {
-	crossterm::terminal::size()
-		.map(|(_, rows)| rows.saturating_sub(4) as usize)
-		.unwrap_or(20)
-}
-
 fn handle_notification(app: &mut App, notification: NotificationEnvelope) {
 	match notification {
 		NotificationEnvelope::CouplerUpdate { interest, .. } => {
-			if let Interest::Sentence { doc, sent } = interest {
-				app.cursor.jump_to(doc, sent);
+			if let Interest::Span { start, end, .. } = interest {
+				app.cursor.set_position(start, &app.access);
+				app.highlight = Some(Span { start, end });
+				ensure_window(app);
 				app.dirty = true;
 			}
 		}

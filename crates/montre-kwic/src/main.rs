@@ -307,7 +307,7 @@ fn auto_couple(app: &mut App, process: &ProcessInfo) {
 	if process.id == our_id {
 		return;
 	}
-	if !process.consumes.contains(&InterestKind::Sentence) {
+	if !process.consumes.contains(&InterestKind::Span) {
 		return;
 	}
 	if app.coupled_followers.contains(&process.id) {

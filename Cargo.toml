@@ -16,5 +16,6 @@ crossterm = "0.28"
 anyhow = "1"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
+unicode-width = "0.2"
 montre-daemon = { path = "../049300/crates/montre-daemon" }
 montre-tui-core = { path = "crates/montre-tui-core" }

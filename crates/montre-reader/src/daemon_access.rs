@@ -2,19 +2,67 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use anyhow::Result;
-use montre_tui_core::protocol::{
-	CorpusDocumentsParams, CorpusInfo, Interest, InterestKind, ProcessKind, PublishInterestParams,
-	RegisterParams, TextSentenceParams, TextSentencesParams,
-};
-use montre_tui_core::sentence_source::{DocumentMeta, SentenceSource, SentenceView};
-use montre_tui_core::DaemonClient;
 use montre_tui_core::daemon::client::NotificationEnvelope;
+use montre_tui_core::protocol::{
+	CorpusDocumentsParams, CorpusInfo, Interest, InterestKind, ProcessKind,
+	PublishInterestParams, RegisterParams, Span, SurfaceToken, TextDocumentParams,
+	TextSurfaceWithTokenSpansParams,
+};
+use montre_tui_core::DaemonClient;
 
 pub struct DocumentSummary {
 	pub index: u32,
 	pub name: String,
 	pub component: String,
 	pub sentence_count: u32,
+	pub token_start: u64,
+	pub token_end: u64,
+}
+
+pub struct TokenWindow {
+	pub start: u64,
+	pub surface: String,
+	pub tokens: Vec<SurfaceToken>,
+}
+
+impl TokenWindow {
+	pub fn first_position(&self) -> Option<u64> {
+		self.tokens.first().map(|token| token.position)
+	}
+
+	pub fn last_position(&self) -> Option<u64> {
+		self.tokens.last().map(|token| token.position)
+	}
+
+	pub fn next_emitted(&self, position: u64) -> Option<u64> {
+		self.tokens
+			.iter()
+			.find(|token| token.emitted && token.position > position)
+			.map(|token| token.position)
+	}
+
+	pub fn prev_emitted(&self, position: u64) -> Option<u64> {
+		self.tokens
+			.iter()
+			.rev()
+			.find(|token| token.emitted && token.position < position)
+			.map(|token| token.position)
+	}
+
+	pub fn emitted_at_or_after(&self, position: u64) -> Option<u64> {
+		self.tokens
+			.iter()
+			.find(|token| token.emitted && token.position >= position)
+			.map(|token| token.position)
+	}
+
+	pub fn emitted_at_or_before(&self, position: u64) -> Option<u64> {
+		self.tokens
+			.iter()
+			.rev()
+			.find(|token| token.emitted && token.position <= position)
+			.map(|token| token.position)
+	}
 }
 
 pub struct DaemonAccess {
@@ -42,22 +90,24 @@ impl DaemonAccess {
 			kind: ProcessKind::Reader,
 			label: Some("montre-reader".to_string()),
 			provides: vec![],
-			consumes: vec![InterestKind::Sentence],
+			consumes: vec![InterestKind::Span],
 		})?;
 
 		let corpus_info = client.corpus_info()?;
 		let document_list = client.corpus_documents(CorpusDocumentsParams { component: None })?;
 
-		let documents: Vec<DocumentSummary> = document_list
-			.documents
-			.into_iter()
-			.map(|document| DocumentSummary {
+		let mut documents = Vec::with_capacity(document_list.documents.len());
+		for document in document_list.documents {
+			let detail = client.text_document(TextDocumentParams { doc: document.index })?;
+			documents.push(DocumentSummary {
 				index: document.index,
 				name: document.name,
 				component: document.component,
 				sentence_count: document.sentence_count,
-			})
-			.collect();
+				token_start: detail.span.start,
+				token_end: detail.span.end,
+			});
+		}
 
 		for (position, summary) in documents.iter().enumerate() {
 			debug_assert_eq!(summary.index as usize, position);
@@ -76,22 +126,8 @@ impl DaemonAccess {
 		self.client.notifications()
 	}
 
-	pub fn document_count(&self) -> u32 {
-		self.documents.len() as u32
-	}
-
 	pub fn document(&self, document_index: u32) -> Option<&DocumentSummary> {
 		self.documents.get(document_index as usize)
-	}
-
-	pub fn document_meta(&self, document_index: u32) -> Option<DocumentMeta> {
-		let summary = self.document(document_index)?;
-		Some(DocumentMeta {
-			index: summary.index,
-			name: summary.name.clone(),
-			component: summary.component.clone(),
-			sentence_count: summary.sentence_count,
-		})
 	}
 
 	pub fn is_multi_component(&self) -> bool {
@@ -99,8 +135,7 @@ impl DaemonAccess {
 	}
 
 	pub fn component_of_document(&self, document_index: u32) -> Option<&str> {
-		self.document(document_index)
-			.map(|summary| summary.component.as_str())
+		self.document(document_index).map(|summary| summary.component.as_str())
 	}
 
 	pub fn first_document_of_next_component(&self, document_index: u32) -> Option<u32> {
@@ -125,81 +160,37 @@ impl DaemonAccess {
 			.map(|summary| summary.index)
 	}
 
-	pub fn to_global_sentence(&self, document_index: u32, sentence_within_document: u32) -> u64 {
-		let mut total: u64 = 0;
-		for summary in &self.documents[..document_index as usize] {
-			total += summary.sentence_count as u64;
-		}
-		total + sentence_within_document as u64
+	pub fn token_ceiling(&self) -> u64 {
+		self.documents.last().map(|summary| summary.token_end).unwrap_or(0)
 	}
 
-	pub fn from_global_sentence(&self, global: u64) -> (u32, u32) {
-		let mut remaining = global;
-		for summary in &self.documents {
-			let count = summary.sentence_count as u64;
-			if remaining < count {
-				return (summary.index, remaining as u32);
+	pub fn document_of_position(&self, position: u64) -> Option<u32> {
+		let found = self.documents.binary_search_by(|summary| {
+			if position < summary.token_start {
+				std::cmp::Ordering::Greater
+			} else if position >= summary.token_end {
+				std::cmp::Ordering::Less
+			} else {
+				std::cmp::Ordering::Equal
 			}
-			remaining -= count;
-		}
-		match self.documents.last() {
-			Some(last) => (last.index, last.sentence_count.saturating_sub(1)),
-			None => (0, 0),
-		}
+		});
+		found.ok().map(|index| self.documents[index].index)
 	}
 
-	pub fn total_sentences(&self) -> u64 {
-		self.documents
-			.iter()
-			.map(|summary| summary.sentence_count as u64)
-			.sum()
+	pub fn fetch_window(&mut self, start: u64, end: u64) -> Result<TokenWindow> {
+		let reply = self.client.text_surface_with_token_spans(TextSurfaceWithTokenSpansParams {
+			ranges: vec![Span { start, end }],
+		})?;
+		let (surface, tokens) = match reply.results.into_iter().next() {
+			Some(result) => (result.surface, result.tokens),
+			None => (String::new(), Vec::new()),
+		};
+		Ok(TokenWindow { start, surface, tokens })
 	}
 
 	#[allow(dead_code)]
 	pub fn publish_interest(&mut self, interest: Interest) -> Result<()> {
-		self.client
-			.publish_interest(PublishInterestParams { interest })?;
+		self.client.publish_interest(PublishInterestParams { interest })?;
 		Ok(())
-	}
-}
-
-impl SentenceSource for DaemonAccess {
-	fn sentence(&mut self, document_index: u32, sentence_within_document: u32) -> Result<SentenceView> {
-		let result = self.client.text_sentence(TextSentenceParams {
-			doc: document_index,
-			sent: sentence_within_document,
-		})?;
-		Ok(SentenceView {
-			sentence_within_document,
-			span: result.span,
-			surface: result.surface,
-			sentence_id: result.sentence_id,
-		})
-	}
-
-	fn sentences(
-		&mut self,
-		document_index: u32,
-		sentence_start: u32,
-		sentence_end: u32,
-	) -> Result<Vec<SentenceView>> {
-		if sentence_start >= sentence_end {
-			return Ok(Vec::new());
-		}
-		let result = self.client.text_sentences(TextSentencesParams {
-			doc: document_index,
-			sent_start: sentence_start,
-			sent_end: sentence_end,
-		})?;
-		Ok(result
-			.sentences
-			.into_iter()
-			.map(|sentence| SentenceView {
-				sentence_within_document: sentence.sent,
-				span: sentence.span,
-				surface: sentence.surface,
-				sentence_id: sentence.sentence_id,
-			})
-			.collect())
 	}
 }
